@@ -2,6 +2,7 @@
 import { computed, shallowRef } from "vue";
 import { Search } from "lucide-vue-next";
 import type { NoteSummary, SiteConfig } from "../../shared/note";
+import { groupPapers, countContributors } from "../../shared/papers";
 import PaperCard from "./PaperCard.vue";
 import LibraryToolbar from "./LibraryToolbar.vue";
 const props = defineProps<{
@@ -17,20 +18,22 @@ const layout = shallowRef("list");
 const tags = computed(() =>
   [...new Set(props.notes.flatMap((n) => n.tags))].sort(),
 );
-const authors = computed(() => new Set(props.notes.map((n) => n.author)).size);
+const papers = computed(() => groupPapers(props.notes));
+const authors = computed(() => countContributors(props.notes));
+const tagCounts = computed(() => new Map(tags.value.map(tag => [tag, papers.value.filter(p => p.tags.includes(tag)).length])));
 const filtered = computed(() =>
-  props.notes
+  papers.value
     .filter(
       (n) =>
         (selectedTag.value === "全部论文" ||
           n.tags.includes(selectedTag.value)) &&
-        `${n.title} ${n.subtitle} ${n.excerpt} ${n.author} ${n.tags.join(" ")}`
+        n.notes.map(note => `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`).join(" ")
           .toLowerCase()
           .includes(query.value.toLowerCase()),
     )
     .sort((a, b) =>
       sort.value === "year"
-        ? b.year.localeCompare(a.year)
+        ? b.note.year.localeCompare(a.note.year)
         : b.updatedAt.localeCompare(a.updatedAt),
     ),
 );
@@ -45,7 +48,7 @@ function resetFilters() {
       <h1>文献库</h1>
       <section class="library-stats" aria-label="文献库统计">
         <span
-          ><strong>{{ notes.length }}</strong> 篇笔记</span
+          ><strong>{{ papers.length }}</strong> 篇论文 · {{ notes.length }} 份笔记</span
         >
         <span
           ><strong>{{ tags.length }}</strong> 个方向</span
@@ -63,7 +66,7 @@ function resetFilters() {
           :aria-pressed="selectedTag === '全部论文'"
           @click="selectedTag = '全部论文'"
         >
-          全部文献 <span>{{ notes.length }}</span>
+          全部文献 <span>{{ papers.length }}</span>
         </button>
         <button
           v-for="tag in tags"
@@ -73,7 +76,7 @@ function resetFilters() {
           @click="selectedTag = tag"
         >
           {{ tag
-          }}<span>{{ notes.filter((n) => n.tags.includes(tag)).length }}</span>
+          }}<span>{{ tagCounts.get(tag) }}</span>
         </button>
       </aside>
       <section class="library-results" aria-label="文献列表">
@@ -112,9 +115,9 @@ function resetFilters() {
           :class="{ 'paper-list': layout === 'list' }"
         >
           <PaperCard
-            v-for="note in filtered"
-            :key="note.id"
-            :note="note"
+            v-for="paper in filtered"
+            :key="paper.id"
+            :paper="paper"
             @open="$emit('open', $event)"
           />
         </div>

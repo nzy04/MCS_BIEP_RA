@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Note } from "../../shared/note";
+import ReviewReceipt from "./ReviewReceipt.vue";
 import { renderedNote } from "../services/markdown";
 const props = defineProps<{ note: Note; assetBase?: string }>();
 // Only the sanitized output of the controlled Markdown renderer is inserted.
@@ -20,5 +21,6 @@ const safeHtml = computed(() => renderedNote(props.note, props.assetBase));
       ><span v-for="tag in note.tags" :key="tag" class="tag">{{ tag }}</span>
     </div>
     <div class="note-body" v-html="safeHtml"></div>
+    <ReviewReceipt v-if="note.review" :receipt="note.review" />
   </article>
 </template>

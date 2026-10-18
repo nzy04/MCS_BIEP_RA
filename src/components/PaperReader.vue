@@ -6,11 +6,15 @@ import {
   Download,
   Github,
 } from "lucide-vue-next";
-import type { Note } from "../../shared/note";
+import { computed } from "vue";
+import type { Note, NoteSummary, Session } from "../../shared/note";
 import { toMarkdown } from "../../shared/note";
+import { ownsNote } from "../../shared/papers";
 import NotePreview from "./NotePreview.vue";
-const props = defineProps<{ note: Note; assetBase: string }>();
-defineEmits<{ back: []; edit: [note: Note] }>();
+import NoteOptions from "./NoteOptions.vue";
+const props = defineProps<{ note: Note; notes: NoteSummary[]; user: Session | null; assetBase: string }>();
+const canEdit = computed(() => props.note.local || props.note.demo || (!!props.user && ownsNote(props.note, props.user)));
+defineEmits<{ back: []; edit: [note: Note]; open: [id: string]; contribute: [note: Note] }>();
 function download() {
   const a = document.createElement("a");
   const url = URL.createObjectURL(
@@ -31,9 +35,10 @@ function download() {
       <div class="action-group">
         <button class="button ghost small" @click="download">
           <Download :size="15" />导出笔记</button
-        ><button class="button secondary small" @click="$emit('edit', note)">
+        ><button v-if="canEdit" class="button secondary small" @click="$emit('edit', note)">
           <Pencil :size="15" />编辑笔记
         </button>
+        <button class="button secondary small" @click="$emit('contribute', note)">添加我的笔记</button>
       </div>
     </div>
     <div v-if="note.local" class="reader-state">
@@ -47,6 +52,8 @@ function download() {
         <NotePreview :note="note" :asset-base="assetBase" />
       </section>
       <aside class="reader-aside">
+        <h3>这篇论文的笔记</h3>
+        <NoteOptions :notes="notes" :current-id="note.id" @open="$emit('open', $event)" />
         <h3>论文资源</h3>
         <a
           v-if="note.paperUrl"
@@ -80,3 +87,8 @@ function download() {
     </div>
   </main>
 </template>
+<style scoped>
+.reader-aside .note-options { margin: 0 0 28px; }
+.reader-toolbar { flex-wrap: wrap; gap: 12px; }
+.action-group { flex-wrap: wrap; }
+</style>

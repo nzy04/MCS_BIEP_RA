@@ -130,6 +130,7 @@ function fakeGit(options: { conflict?: boolean; writable?: boolean } = {}) {
             content: Buffer.from(JSON.stringify(oldNote)).toString("base64"),
           })
         : reply({}, 404);
+    if (path.includes("/contents/data/authors/")) return reply({}, 404);
     if (path.endsWith("/git/blobs")) {
       const id = `blob${blobs.size}`;
       blobs.set(

@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { ImagePlus } from "lucide-vue-next";
 import { sectionDefinitions, type Note } from "../../shared/note";
 const note = defineModel<Note>({ required: true });
+defineProps<{ authorLocked?: boolean }>();
 defineEmits<{ image: [file: File] }>();
 const tags = computed({
   get: () => note.value.tags.join("，"),
@@ -28,7 +29,7 @@ const tags = computed({
     /></label>
     <div class="field-grid">
       <label class="field"
-        >分享人<input v-model="note.author" placeholder="你的名字" /></label
+        >分享人<input v-model="note.author" placeholder="你的名字" :readonly="authorLocked" :title="authorLocked ? '在右上角账号中设置昵称，历史笔记会同步更新' : undefined" /></label
       ><label class="field"
         >阅读深度<select v-model="note.readingDepth">
           <option>阅读笔记</option>

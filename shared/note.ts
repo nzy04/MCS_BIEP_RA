@@ -1,3 +1,4 @@
+import type { ReviewReceipt } from "./review";
 export const sectionDefinitions = [
   {
     key: "summary",
@@ -95,6 +96,7 @@ export interface NoteSummary {
   codeUrl: string;
   author: string;
   authorLogin: string;
+  authorId?: number;
   createdAt: string;
   updatedAt: string;
   revision: string;
@@ -107,6 +109,7 @@ export interface Note extends NoteSummary {
   sections: Record<SectionKey, string>;
   assets: NoteAsset[];
   sourceNames: string[];
+  review?: ReviewReceipt;
 }
 export interface UploadAsset {
   path: string;
@@ -117,12 +120,16 @@ export interface SiteConfig {
   title: string;
   configured: boolean;
   authConfigured: boolean;
+  reviewConfigured?: boolean;
   repository: string;
   branch: string;
 }
 export interface Session {
+  id?: number;
   login: string;
   name: string;
+  githubName?: string;
+  nickname?: string;
   avatar: string;
   canWrite: boolean;
 }
@@ -155,7 +162,7 @@ export function createNote(): Note {
   };
 }
 export function summarize(note: Note): NoteSummary {
-  const { sections, assets, sourceNames, ...entry } = note;
+  const { sections, assets, sourceNames, review, ...entry } = note;
   return {
     ...entry,
     excerpt: (sections.summary || sections.problem || sections.original)
@@ -224,10 +231,13 @@ export function toMarkdown(note: Note): string {
   const frontmatter = Object.entries(metadata)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join("\n");
+  const reviewText = note.review
+    ? `\n\n## 审核与资料补充\n\n研究方向：${note.review.directions.join("、")}\n\n${note.review.supplements.map((s) => `- 自动补充 ${s.field}：${s.value}（来源：${s.sourceUrl}）`).join("\n")}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`
+    : "";
   return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${sectionDefinitions
     .filter((s) => note.sections[s.key])
     .map((s) => `## ${s.label}\n\n${note.sections[s.key]}`)
-    .join("\n\n")}\n`;
+    .join("\n\n")}${reviewText}\n`;
 }
 export function validateNote(note: Note): string[] {
   const errors: string[] = [];

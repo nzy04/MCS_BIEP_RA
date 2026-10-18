@@ -1,4 +1,5 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
+import type { ReviewJobSummary } from "../../shared/review";
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -43,6 +44,13 @@ export async function session(): Promise<Session | null> {
     return null;
   }
 }
+export function updateProfile(nickname: string): Promise<{ user: Session; notes: NoteSummary[] }> {
+  return api("/api/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nickname }),
+  });
+}
 export async function library(connected: boolean): Promise<NoteSummary[]> {
   const data = await api<{ notes: NoteSummary[] }>(
     connected ? "/api/library" : "/data/library.json",
@@ -59,7 +67,7 @@ export async function loadNote(id: string, connected: boolean): Promise<Note> {
 export async function publishNote(
   note: Note,
   baseRevision: string,
-): Promise<{ note: Note; commitUrl: string }> {
+): Promise<{ job: ReviewJobSummary }> {
   const assets = note.assets
     .filter((a) => a.dataUrl)
     .map((a) => ({
@@ -77,3 +85,15 @@ export async function publishNote(
     body: JSON.stringify({ note: cleanNote, assets, baseRevision }),
   });
 }
+export async function reviewJobs(): Promise<ReviewJobSummary[]> {
+  return (await api<{ jobs: ReviewJobSummary[] }>("/api/reviews")).jobs;
+}
+export const reviewDetail = (id: string) =>
+  api<{ job: ReviewJobSummary; note: Note | null }>(
+    `/api/reviews/${encodeURIComponent(id)}`,
+  );
+export const retryReview = (id: string) =>
+  api<{ job: ReviewJobSummary }>(
+    `/api/reviews/${encodeURIComponent(id)}/retry`,
+    { method: "POST" },
+  );

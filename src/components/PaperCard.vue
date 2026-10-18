@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import type { NoteSummary } from "../../shared/note";
-defineProps<{ note: NoteSummary }>();
+import { computed } from "vue";
+import type { PaperGroup } from "../../shared/papers";
+import NoteOptions from "./NoteOptions.vue";
+const props = defineProps<{ paper: PaperGroup }>();
+const note = computed(() => props.paper.note);
 defineEmits<{ open: [id: string] }>();
 </script>
 <template>
@@ -25,13 +28,14 @@ defineEmits<{ open: [id: string] }>();
       >
       <p v-if="note.subtitle" class="card-subtitle">{{ note.subtitle }}</p>
       <p v-if="note.excerpt" class="card-excerpt">{{ note.excerpt }}</p>
-      <div v-if="note.tags.length" class="card-tags">
-        <span v-for="tag in note.tags" :key="tag" class="tag">{{ tag }}</span>
+      <div v-if="paper.tags.length" class="card-tags">
+        <span v-for="tag in paper.tags" :key="tag" class="tag">{{ tag }}</span>
       </div>
+      <NoteOptions :notes="paper.notes" @open="$emit('open', $event)" />
     </div>
     <div class="card-side">
       <div class="card-footer">
-        <span class="card-person">{{ note.author || "未署名" }}</span
+        <span class="card-person">{{ paper.notes.length > 1 ? `${paper.notes.length} 份阅读笔记` : note.author || "未署名" }}</span
         ><time :datetime="note.updatedAt">{{
           note.updatedAt.slice(0, 10)
         }}</time>

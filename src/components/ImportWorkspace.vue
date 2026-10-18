@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, shallowRef } from "vue";
+import { computed, onMounted, shallowRef, watch } from "vue";
 import {
   ArrowLeft,
   ArrowRight,
@@ -55,6 +55,18 @@ const {
   clearDraft,
 } = useImporter(props.existing);
 const hasDraft = shallowRef(false);
+const initialized = shallowRef(false);
+function syncAuthor() {
+  // An untouched import screen must not autosave a blank draft over a recoverable one.
+  if (!initialized.value || (hasDraft.value && !props.existing && !recovered.value && step.value === 1)) return;
+  const user = props.user;
+  if (user) {
+    draft.value.author = user.name || user.login;
+    draft.value.authorLogin = user.login;
+    draft.value.authorId = user.id;
+  }
+}
+watch([() => props.user, () => draft.value, step], syncAuthor);
 const publishing = shallowRef(false);
 const sourceTab = shallowRef("note");
 const commitUrl = shallowRef("");
@@ -66,8 +78,8 @@ const canContinue = computed(
 );
 onMounted(async () => {
   hasDraft.value = !!(await getRecord("draft"));
-  if (!hasDraft.value && !draft.value.author && props.user)
-    draft.value.author = props.user.name || props.user.login;
+  initialized.value = true;
+  syncAuthor();
 });
 function changed(event: Event, role: "note" | "paper") {
   const file = (event.target as HTMLInputElement).files?.[0];
@@ -222,7 +234,7 @@ function download() {
             <h2>笔记模板</h2>
             <span>{{ draftSaved || "自动保存草稿" }}</span>
           </div>
-          <TemplateEditor v-model="draft" @image="addImage" />
+          <TemplateEditor v-model="draft" :author-locked="!!user" @image="addImage" />
         </section>
         <aside class="source-panel">
           <div class="source-tabs">
@@ -288,7 +300,7 @@ function download() {
               }}</strong
               ><span>{{
                 remote
-                  ? "公开可见"
+                  ? "通过审核后公开"
                   : config.configured
                     ? "登录后可发布到仓库"
                     : "仅本机保存"
@@ -308,7 +320,9 @@ function download() {
           >
             <Save :size="17" />{{
               publishing
-                ? "正在保存…"
+                ? remote
+                  ? "正在提交审核…"
+                  : "正在保存…"
                 : remote
                   ? "确认发布到仓库"
                   : "确认保存到本机"

@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { BookOpen, Plus, Github, LogOut } from "lucide-vue-next";
+import { BookOpen, Plus, Github, LogOut, Pencil } from "lucide-vue-next";
 import type { Session, SiteConfig } from "../../shared/note";
-defineProps<{ config: SiteConfig; user: Session | null; view: string }>();
+defineProps<{
+  config: SiteConfig;
+  user: Session | null;
+  view: string;
+  pendingReviews?: number;
+}>();
 defineEmits<{
   navigate: [view: string];
   create: [];
   login: [];
   logout: [];
   setup: [];
+  profile: [];
 }>();
 </script>
 <template>
@@ -23,6 +29,14 @@ defineEmits<{
           @click.prevent="$emit('navigate', 'library')"
           >论文库</a
         ><a
+          v-if="user"
+          href="#reviews"
+          :class="{ active: view === 'reviews' }"
+          @click.prevent="$emit('navigate', 'reviews')"
+          >我的提交<span v-if="pendingReviews" class="pending-count">{{
+            pendingReviews
+          }}</span></a
+        ><a
           v-if="config.repository"
           :href="`https://github.com/${config.repository}`"
           target="_blank"
@@ -33,10 +47,10 @@ defineEmits<{
       <div class="header-actions">
         <span v-if="!config.configured" class="demo-badge">本地体验版</span
         ><template v-if="user"
-          ><span class="account"
-            ><img :src="user.avatar" alt="" />{{
+          ><button class="account" aria-label="设置昵称" :title="`设置昵称 · @${user.login}`" @click="$emit('profile')"
+            ><img v-if="user.avatar" :src="user.avatar" alt="" /><span class="account-name">{{
               user.name || user.login
-            }}</span
+            }}</span><Pencil :size="12" class="account-pencil" /></button
           ><button
             class="icon-button"
             aria-label="退出登录"
@@ -56,3 +70,16 @@ defineEmits<{
     </div>
   </header>
 </template>
+<style scoped>
+.account { padding: 0; min-height: 32px; }
+.account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-pencil { flex-shrink: 0; }
+.pending-count {
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: #eaf0f7;
+  color: var(--green);
+  border-radius: 2px;
+  font-size: 13px;
+}
+</style>

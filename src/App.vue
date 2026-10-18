@@ -6,6 +6,8 @@ import LibraryView from "./components/LibraryView.vue";
 import ImportWorkspace from "./components/ImportWorkspace.vue";
 import PaperReader from "./components/PaperReader.vue";
 import SetupDialog from "./components/SetupDialog.vue";
+import ProfileDialog from "./components/ProfileDialog.vue";
+import ReviewJobsView from "./components/ReviewJobsView.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -13,11 +15,13 @@ const app = useWorkspace();
     :config="app.configuration.value"
     :user="app.user.value"
     :view="app.view.value"
+    :pending-reviews="app.pendingReviews.value"
     @navigate="app.navigate"
     @create="app.beginImport()"
     @login="app.login"
     @logout="app.logout"
     @setup="app.setupOpen.value = true"
+    @profile="app.profileOpen.value = true"
   /><LibraryView
     v-if="app.view.value === 'library'"
     :notes="app.notes.value"
@@ -27,6 +31,18 @@ const app = useWorkspace();
     @create="app.beginImport()"
     @refresh="app.refresh"
     @setup="app.setupOpen.value = true"
+  /><ReviewJobsView
+    v-else-if="app.view.value === 'reviews'"
+    :jobs="app.reviews.jobs.value"
+    :loading="app.reviews.loading.value"
+    :error="app.reviews.error.value"
+    :signed-in="!!app.user.value"
+    @refresh="app.reviews.refresh"
+    @edit="app.editReview"
+    @retry="app.retryReview"
+    @open="app.openNote"
+    @create="app.beginImport()"
+    @login="app.login"
   /><ImportWorkspace
     v-else-if="app.view.value === 'import'"
     :key="app.editingNote.value?.id || 'new'"
@@ -40,15 +56,20 @@ const app = useWorkspace();
   /><PaperReader
     v-else-if="app.selectedNote.value"
     :note="app.selectedNote.value"
+    :notes="app.selectedPaperNotes.value"
+    :user="app.user.value"
     :asset-base="app.assetBase.value"
     @back="app.navigate('library')"
     @edit="app.beginImport"
+    @open="app.openNote"
+    @contribute="app.contribute"
   />
   <div v-else class="page-container empty-state">正在读取笔记…</div>
   <SetupDialog
     v-if="app.setupOpen.value"
     @close="app.setupOpen.value = false"
   />
+  <ProfileDialog v-if="app.profileOpen.value && app.user.value" :user="app.user.value" :save="app.saveProfile" @close="app.profileOpen.value = false" />
   <div
     v-if="app.message.value"
     class="toast"
