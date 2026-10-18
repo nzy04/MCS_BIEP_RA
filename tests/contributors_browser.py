@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import sys
+import zipfile
 
 sys.path.insert(0, str(pathlib.Path("test-results/python-deps").resolve()))
 from playwright.sync_api import sync_playwright, expect
@@ -90,7 +91,8 @@ with sync_playwright() as p:
         expect(page.get_by_role("button", name="编辑笔记", exact=True)).to_be_visible()
         page.get_by_role("button", name="添加我的笔记", exact=True).click()
         expect(page.get_by_label("笔记标题", exact=True)).to_have_value("Shared Paper")
-        expect(page.get_by_label("一句话总结", exact=True)).to_have_value("")
+        expect(page.get_by_role("textbox", name="笔记正文", exact=True)).to_have_text("")
+        page.locator('.metadata-panel > summary').click()
         expect(page.get_by_label("分享人", exact=True)).to_have_value("Alice GitHub")
         assert page.get_by_label("分享人", exact=True).get_attribute("readonly") is not None
         page.get_by_role("link", name="论文库", exact=True).click()
@@ -115,8 +117,9 @@ with sync_playwright() as p:
         expect(page.locator(".note-meta")).to_contain_text("小张")
         page.screenshot(path=str(out / "desktop-reader.png"), full_page=True)
         with page.expect_download() as downloaded:
-            page.get_by_role("button", name="导出笔记", exact=True).click()
-        assert 'author: "小张"' in pathlib.Path(downloaded.value.path()).read_text(encoding="utf-8")
+            page.get_by_role("button", name="导出笔记包", exact=True).click()
+        with zipfile.ZipFile(downloaded.value.path()) as package:
+            assert 'author: "小张"' in package.read('note.md').decode('utf-8')
         results.append("nickname failure leaves identity unchanged; save updates both old notes; reload, reader and Markdown export retain new name")
 
         page.get_by_role("button", name="设置昵称", exact=True).click()
@@ -149,14 +152,15 @@ with sync_playwright() as p:
         page.get_by_role("button", name="上传笔记", exact=True).click()
         page.get_by_role("button", name="在线写笔记", exact=True).click()
         page.get_by_label("笔记标题", exact=True).fill("改名后仍应保留的草稿")
-        page.get_by_label("一句话总结", exact=True).fill("先前输入的正文不能被昵称自动填充覆盖。")
+        page.get_by_role("textbox", name="笔记正文", exact=True).fill("先前输入的正文不能被昵称自动填充覆盖。")
         page.wait_for_timeout(1000)  # Wait for the existing 700ms draft debounce.
         page.reload()
         page.get_by_role("button", name="恢复继续编辑", exact=True).wait_for()
         page.wait_for_timeout(1000)
         page.get_by_role("button", name="恢复继续编辑", exact=True).click()
         expect(page.get_by_label("笔记标题", exact=True)).to_have_value("改名后仍应保留的草稿")
-        expect(page.get_by_label("一句话总结", exact=True)).to_have_value("先前输入的正文不能被昵称自动填充覆盖。")
+        expect(page.get_by_role("textbox", name="笔记正文", exact=True)).to_have_text("先前输入的正文不能被昵称自动填充覆盖。")
+        page.locator('.metadata-panel > summary').click()
         expect(page.get_by_label("分享人", exact=True)).to_have_value(account["name"])
         results.append("restoring a signed-in draft preserves its title and body after debounce while adopting current nickname")
 

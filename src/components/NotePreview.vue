@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, shallowRef } from "vue";
+import ImageLightbox from "./ImageLightbox.vue";
 import type { Note } from "../../shared/note";
 import ReviewReceipt from "./ReviewReceipt.vue";
 import { renderedNote } from "../services/markdown";
 const props = defineProps<{ note: Note; assetBase?: string }>();
 // Only the sanitized output of the controlled Markdown renderer is inserted.
 const safeHtml = computed(() => renderedNote(props.note, props.assetBase));
+const selectedImage = shallowRef<{ src: string; alt: string } | null>(null);
+function openImage(event: MouseEvent) {
+  if (event.target instanceof HTMLImageElement)
+    selectedImage.value = { src: event.target.src, alt: event.target.alt };
+}
 </script>
 <template>
   <article class="note-preview">
@@ -20,7 +26,9 @@ const safeHtml = computed(() => renderedNote(props.note, props.assetBase));
       ><span>·</span><span>{{ note.readingDepth }}</span
       ><span v-for="tag in note.tags" :key="tag" class="tag">{{ tag }}</span>
     </div>
-    <div class="note-body" v-html="safeHtml"></div>
+
+    <div class="note-body" @click="openImage" v-html="safeHtml"></div>
+    <ImageLightbox :image="selectedImage" @close="selectedImage = null" />
     <ReviewReceipt v-if="note.review" :receipt="note.review" />
   </article>
 </template>

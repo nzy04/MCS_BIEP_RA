@@ -1,5 +1,6 @@
 import {
   sectionDefinitions,
+  structureText,
   summarize,
   toMarkdown,
   validateNote,
@@ -208,6 +209,11 @@ export function validateIncoming(value: any): {
     }),
   ) as Note["sections"];
   if (
+    input.body !== undefined &&
+    (typeof input.body !== "string" || input.body.length > 150000)
+  )
+    throw new HttpError(400, "笔记正文过长或格式不正确。");
+  if (
     !Array.isArray(input.tags) ||
     input.tags.length > 8 ||
     input.tags.some((t: unknown) => typeof t !== "string" || t.length > 50)
@@ -234,7 +240,12 @@ export function validateIncoming(value: any): {
       a.size > 4 * 1024 * 1024
     )
       throw new HttpError(400, "附件路径、格式或大小不合法。");
-    return { path: a.path, mime: a.mime, size: a.size };
+    return {
+      path: a.path,
+      mime: a.mime,
+      size: a.size,
+      ...(typeof a.name === "string" ? { name: a.name.slice(0, 250) } : {}),
+    };
   });
   const assets = value.assets ?? [];
   if (!Array.isArray(assets) || assets.length > 25)
@@ -281,7 +292,11 @@ export function validateIncoming(value: any): {
     updatedAt: now,
     revision: "",
     excerpt: "",
-    sections,
+    sections:
+      typeof input.body === "string"
+        ? structureText(input.body).sections
+        : sections,
+    ...(typeof input.body === "string" ? { body: input.body } : {}),
     assets: metadata,
     sourceNames: Array.isArray(input.sourceNames)
       ? input.sourceNames
@@ -421,7 +436,16 @@ export async function commitNote(
             ),
           ),
         );
-        for (const a of old.assets ?? []) oldAssets.add(a.path);
+        for (const a of old.assets ?? []) {
+          if (
+            typeof a.path === "string" &&
+            a.path.startsWith(`assets/uploads/${note.id}/`) &&
+            /^[-a-zA-Z0-9.]+$/.test(
+              a.path.slice(`assets/uploads/${note.id}/`.length),
+            )
+          )
+            oldAssets.add(a.path);
+        }
       } catch (e) {
         if ((e as HttpError).status !== 404) throw e;
       }
@@ -486,7 +510,17 @@ export async function commitNote(
         method: "POST",
         body: JSON.stringify({
           base_tree: headCommit.tree.sha,
-          tree: treeEntries,
+          tree: [
+            ...treeEntries,
+            ...[...oldAssets]
+              .filter((path) => !note.assets.some((a) => a.path === path))
+              .map((path) => ({
+                path,
+                mode: "100644",
+                type: "blob",
+                sha: null,
+              })),
+          ],
         }),
       },
       fetcher,

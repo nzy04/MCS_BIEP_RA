@@ -170,6 +170,34 @@ test("先用免费元数据准确匹配，成功时不触发搜索兜底", async
   assert.equal(result.receipt?.supplements.length, 3);
   assert.equal(result.receipt?.sources[0]?.kind, "crossref");
 });
+
+test("完整图文笔记按实际内容审核，保留自定义章节和图表，语义退回仍有效", async () => {
+  const n = note();
+  n.body = `## 框架图与工作流\n\n${n.sections.problem}\n\n![框架图](assets/uploads/${n.id}/framework.png)\n\n图1 模型训练与控制流程。\n\n## 我的判断与关联\n\n${n.sections.method}\n\n${n.sections.insights}\n\n| 条件 | 观察 |\n| --- | --- |\n| 长期预测 | 误差累积需要检验 |`;
+  let calls = 0;
+  const approved = await reviewSubmission(n, env, [], async (_url, init) => {
+    calls++;
+    const payload = JSON.parse(String(init?.body));
+    const content = JSON.parse(payload.messages[1].content);
+    assert.equal(content.body, n.body);
+    assert.ok(!("sections" in content));
+    return chat();
+  });
+  assert.equal(calls, 1);
+  assert.equal(approved.approved, true);
+  assert.equal(approved.note.body, n.body);
+  const rejected = await reviewSubmission(n, env, [], async () =>
+    chat(
+      model({
+        approved: false,
+        issues: [{ field: "insights", message: "请补充判断的具体依据。" }],
+      }),
+    ),
+  );
+  assert.equal(rejected.approved, false);
+  assert.equal(rejected.note.body, n.body);
+  assert.equal(rejected.issues[0]?.field, "insights");
+});
 test("免费定位失败才调用一次搜索，找不到唯一来源时不再花费聊天额度", async () => {
   const n = note();
   n.paperUrl = "";

@@ -1043,6 +1043,319 @@ p {
   height: 16px;
   flex-shrink: 0;
 }
+.body-editor {
+  min-width: 0;
+}
+.body-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 24px 0 14px;
+}
+.body-editor-heading h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.body-editor-heading > div {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+.body-editor-heading .text-link {
+  font-size: 13px;
+}
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 8px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.editor-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 31px;
+  min-height: 33px;
+  padding: 6px;
+  border-radius: 2px;
+  font-size: 13px;
+}
+.editor-toolbar button:hover,
+.editor-toolbar button[aria-pressed="true"] {
+  background: #dce6f2;
+  color: var(--green);
+}
+.editor-toolbar select {
+  height: 32px;
+  width: 100px;
+  font-size: 13px;
+  padding: 0 5px;
+}
+.table-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  border: 1px solid var(--border);
+  padding: 7px;
+  background: #f9fbfd;
+  border-bottom: 0;
+}
+.table-tools button {
+  font-size: 13px;
+  color: var(--green);
+  padding: 4px 7px;
+}
+.rich-document {
+  min-height: 560px;
+  padding: 22px 25px;
+  border: 1px solid var(--border);
+  outline: none;
+}
+.rich-document:focus {
+  border-color: #91a7c0;
+}
+.rich-document > :first-child {
+  margin-top: 0;
+}
+.rich-document h1 {
+  font-size: 27px;
+}
+.rich-document img {
+  display: block;
+  height: auto;
+  margin: 18px auto;
+}
+.rich-document .ProseMirror-selectednode {
+  outline: 2px solid #476f9a;
+}
+.rich-document .tableWrapper {
+  overflow: auto;
+  max-width: 100%;
+}
+.rich-document table {
+  display: table;
+  width: 100%;
+  min-width: 280px;
+  table-layout: fixed;
+}
+.rich-document td,
+.rich-document th {
+  min-width: 55px;
+  position: relative;
+  vertical-align: top;
+}
+.rich-document td > :first-child,
+.rich-document th > :first-child {
+  margin-top: 0;
+}
+.rich-document td > :last-child,
+.rich-document th > :last-child {
+  margin-bottom: 0;
+}
+.rich-document .selectedCell {
+  background: #dce7f4;
+}
+.rich-document .is-editor-empty:first-child::before {
+  content: "在这里撰写笔记，或插入参考模板";
+  color: var(--muted);
+  pointer-events: none;
+}
+.markdown-source {
+  display: block;
+  width: 100%;
+  min-height: 650px;
+  padding: 20px;
+  resize: vertical;
+  font-family: Consolas, "Microsoft YaHei", monospace;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.metadata-panel {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0;
+  margin-bottom: 24px;
+}
+.metadata-panel summary,
+.note-assets summary {
+  cursor: pointer;
+  color: var(--green);
+  font-weight: 500;
+}
+.metadata-fields {
+  padding-top: 20px;
+}
+.metadata-fields > .field:last-child {
+  margin-bottom: 4px;
+}
+.note-title-field > input {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 600;
+}
+.note-assets {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border);
+  margin-top: 8px;
+}
+.note-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+.note-asset {
+  border: 1px solid var(--border);
+  padding: 10px;
+  min-width: 0;
+}
+.note-asset img {
+  width: 100%;
+  height: 85px;
+  object-fit: contain;
+  background: #f8f9fb;
+}
+.note-asset > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.note-asset > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.note-asset .text-link {
+  font-size: 13px;
+}
+.image-insert-dialog,
+.pdf-figure-dialog {
+  width: min(680px, 95vw);
+  background: #fff;
+  padding: 28px;
+  max-height: 92vh;
+  overflow: auto;
+  border-radius: 3px;
+}
+.image-insert-dialog h2,
+.pdf-figure-dialog h2 {
+  font-size: 22px;
+  margin-bottom: 24px;
+}
+.image-insert-dialog .action-group,
+.pdf-figure-dialog .action-group {
+  justify-content: flex-end;
+}
+.pdf-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.pdf-page-controls input {
+  width: 75px;
+  padding: 8px;
+}
+.pdf-page-controls > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.pdf-page-image {
+  display: block;
+  max-width: 100%;
+  max-height: 55vh;
+  margin: 0 auto 20px;
+  border: 1px solid var(--border);
+}
+.image-lightbox {
+  border: 1px solid var(--border);
+  padding: 0;
+  max-width: 96vw;
+  max-height: 94vh;
+  width: max-content;
+}
+.image-lightbox::backdrop {
+  background: #122235bd;
+}
+.image-lightbox header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.image-lightbox header span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.image-lightbox header a {
+  color: var(--green);
+  white-space: nowrap;
+  font-size: 14px;
+}
+.image-lightbox > img {
+  display: block;
+  max-width: 94vw;
+  max-height: 82vh;
+  object-fit: contain;
+}
+.note-preview .note-body img {
+  cursor: zoom-in;
+}
+.note-body figure {
+  margin: 20px 0;
+}
+.note-body figcaption {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+}
+@media (max-width: 720px) {
+  .body-editor-heading {
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .body-editor-heading > div {
+    gap: 13px;
+  }
+  .rich-document {
+    min-height: 420px;
+    padding: 20px 15px;
+  }
+  .editor-toolbar {
+    position: static;
+    padding: 6px;
+  }
+  .editor-toolbar select {
+    width: 88px;
+  }
+  .note-asset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .image-insert-dialog,
+  .pdf-figure-dialog {
+    padding: 22px;
+  }
+  .image-lightbox header {
+    gap: 12px;
+    padding: 10px;
+  }
+}
 .reader-toolbar {
   display: flex;
   justify-content: space-between;

@@ -1,92 +1,51 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { ImagePlus } from "lucide-vue-next";
-import { sectionDefinitions, type Note } from "../../shared/note";
+import { computed, shallowRef } from "vue";
+import { structureText, type Note, type NoteAsset } from "../../shared/note";
+import { noteBody } from "../../shared/document";
+import PaperMetadataEditor from "./PaperMetadataEditor.vue";
+import NoteBodyEditor from "./NoteBodyEditor.vue";
 const note = defineModel<Note>({ required: true });
-defineProps<{ authorLocked?: boolean }>();
-defineEmits<{ image: [file: File] }>();
-const tags = computed({
-  get: () => note.value.tags.join("，"),
-  set: (v: string) =>
-    (note.value.tags = v
-      .split(/[,，]/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .slice(0, 8)),
+
+defineProps<{
+  authorLocked?: boolean;
+  assetBase: string;
+  paperFile: File | null;
+  addImage: (file: File) => Promise<NoteAsset | null>;
+}>();
+defineEmits<{ removeAsset: [path: string] }>();
+const metadataOpen = shallowRef(!note.value.title);
+const body = computed({
+  get: () => noteBody(note.value),
+  set: (value: string) => {
+    note.value.body = value;
+    note.value.sections = structureText(value).sections;
+  },
 });
 </script>
 <template>
-  <div class="template-editor">
-    <div class="editor-section-label">基本信息</div>
-    <label class="field"
+  <div class="template-editor document-template">
+    <label class="field note-title-field"
       >笔记标题<input
         v-model="note.title"
-        required
+        maxlength="250"
         placeholder="论文标题或阅读主题"
-        maxlength="250" /></label
-    ><label class="field"
-      >中文说明<input v-model="note.subtitle" placeholder="中文标题或简述"
+        required
     /></label>
-    <div class="field-grid">
-      <label class="field"
-        >分享人<input v-model="note.author" placeholder="你的名字" :readonly="authorLocked" :title="authorLocked ? '在右上角账号中设置昵称，历史笔记会同步更新' : undefined" /></label
-      ><label class="field"
-        >阅读深度<select v-model="note.readingDepth">
-          <option>阅读笔记</option>
-          <option>概览</option>
-          <option>精读</option>
-          <option>已复现</option>
-        </select></label
-      ><label class="field"
-        >会议 / 期刊<input
-          v-model="note.venue"
-          placeholder="如 ICLR / arXiv" /></label
-      ><label class="field"
-        >发表年份<input
-          v-model="note.year"
-          placeholder="如 2026"
-          inputmode="numeric"
-          maxlength="4"
-      /></label>
-    </div>
-    <label class="field"
-      >方向标签<input
-        v-model="tags"
-        placeholder="用逗号分隔，如 世界模型，具身智能" /></label
-    ><label class="field"
-      >论文链接<input
-        v-model="note.paperUrl"
-        placeholder="https://arxiv.org/abs/…"
-        type="url" /></label
-    ><label class="field"
-      >代码链接<input
-        v-model="note.codeUrl"
-        placeholder="https://github.com/…（可选）"
-        type="url"
-    /></label>
-    <div class="editor-section-label section-divider">
-      阅读笔记
-      <label class="text-link image-upload"
-        ><ImagePlus :size="16" />添加插图<input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          hidden
-          @change="
-            ($event.target as HTMLInputElement).files?.[0] &&
-            $emit('image', ($event.target as HTMLInputElement).files![0])
-          "
-      /></label>
-    </div>
-    <label
-      v-for="section in sectionDefinitions"
-      :key="section.key"
-      class="field section-field"
-      >{{ section.label
-      }}<textarea
-        v-model="note.sections[section.key]"
-        :rows="section.key === 'original' ? 8 : 4"
-        :placeholder="section.key === 'original' ? '未分类的原始内容' : ''"
-      />
-    </label>
+    <details
+      :open="metadataOpen"
+      class="metadata-panel"
+      @toggle="metadataOpen = ($event.target as HTMLDetailsElement).open"
+    >
+      <summary>论文信息</summary>
+      <PaperMetadataEditor v-model="note" :author-locked="authorLocked" />
+    </details>
+    <NoteBodyEditor
+      v-model="body"
+      :assets="note.assets"
+      :asset-base="assetBase"
+      :paper-file="paperFile"
+      :add-image="addImage"
+      @remove-asset="$emit('removeAsset', $event)"
+    />
   </div>
 </template>

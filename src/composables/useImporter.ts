@@ -1,5 +1,17 @@
 import { ref, shallowRef, watch, onUnmounted } from "vue";
-import { createNote, structureText, type Note } from "../../shared/note";
+import {
+  createNote,
+  structureText,
+  type Note,
+  type NoteAsset,
+} from "../../shared/note";
+import { importBody, noteBody } from "../../shared/document";
+import {
+  bindMarkdownImages,
+  makeImageAsset,
+  imageSources,
+} from "../services/noteMedia";
+import { unpackNotePackage } from "../services/notePackage";
 import { parseDocument, type ParsedDocument } from "../services/importer";
 import { getRecord, setRecord, removeRecord } from "../services/storage";
 export function useImporter(existing?: Note | null) {
@@ -21,7 +33,11 @@ export function useImporter(existing?: Note | null) {
   const recovered = shallowRef(false);
   let timer: ReturnType<typeof setTimeout>;
   let previousUrl = "";
-  async function selectFile(file: File, role: "note" | "paper") {
+  async function selectFile(
+    file: File,
+    role: "note" | "paper",
+    companionImages: File[] = [],
+  ) {
     error.value = "";
     warnings.value = [];
     busy.value = true;
@@ -32,19 +48,29 @@ export function useImporter(existing?: Note | null) {
       if (role === "note") {
         noteFile.value = file;
         originalText.value = parsed.text;
-        const structured = structureText(parsed.text);
+        const bound = await bindMarkdownImages(
+          parsed.text,
+          companionImages,
+          draft.value.id,
+        );
+        const document = importBody(bound.text);
+        const structured = structureText(document.body);
         draft.value = {
           ...draft.value,
-          title: structured.title || file.name.replace(/\.[^.]+$/, ""),
+          title: document.title || file.name.replace(/\.[^.]+$/, ""),
+          body: document.body,
           sections: structured.sections,
-          assets: parsed.assets,
-          sourceNames: [file.name],
+          assets: [...parsed.assets, ...bound.assets],
+          sourceNames: [file.name, ...companionImages.map((f) => f.name)].slice(
+            0,
+            10,
+          ),
         };
         warnings.value = [
           ...parsed.warnings,
-          ...(structured.matched
-            ? [`已匹配 ${structured.matched} 个章节；请确认归类。`]
-            : ["已完整保留原始笔记，尚未识别模板章节。可在下一步自行整理。"]),
+          ...bound.warnings.filter(
+            (w) => !parsed.assets.some((a) => w.includes(a.path)),
+          ),
         ];
       } else {
         paperFile.value = file;
@@ -63,36 +89,79 @@ export function useImporter(existing?: Note | null) {
       busy.value = false;
     }
   }
-  async function addImage(file: File) {
-    if (
-      !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-        file.type,
-      )
-    ) {
-      error.value = "请选择 PNG、JPG、WebP 或 GIF 图片。";
-      return;
+  async function selectFiles(files: File[]) {
+    try {
+      if (files.length === 1 && /\.zip$/i.test(files[0].name))
+        files = await unpackNotePackage(files[0]);
+      const documents = files.filter(
+        (f) => !/\.(png|jpe?g|webp|gif)$/i.test(f.name),
+      );
+      const notes = documents.filter((f) => !/\.pdf$/i.test(f.name));
+      const pdfs = documents.filter((f) => /\.pdf$/i.test(f.name));
+      const primary =
+        notes.length === 1
+          ? notes[0]
+          : documents.length === 1
+            ? documents[0]
+            : null;
+      if (!primary || notes.length > 1 || pdfs.length > 1)
+        throw new Error("每次选择一份笔记及其图片，可额外带一份论文 PDF。");
+      await selectFile(
+        primary,
+        "note",
+        files.filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f.name)),
+      );
+      const notices = [...warnings.value];
+      if (notes.length === 1 && pdfs.length === 1 && !error.value) {
+        await selectFile(pdfs[0], "paper");
+        warnings.value = [...notices, ...warnings.value];
+      }
+    } catch (e) {
+      error.value = (e as Error).message;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      error.value = "单张插图请控制在 2 MB 以内。";
-      return;
+  }
+  async function addImage(file: File): Promise<NoteAsset | null> {
+    error.value = "";
+    try {
+      const asset = await makeImageAsset(file, draft.value.id);
+      if (!draft.value.assets.some((a) => a.path === asset.path)) {
+        if (draft.value.assets.length >= 25)
+          throw new Error("最多附带 25 个文件。");
+        draft.value.assets.push(asset);
+      }
+      return draft.value.assets.find((a) => a.path === asset.path)!;
+    } catch (e) {
+      error.value = (e as Error).message;
+      return null;
     }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-    const path = `assets/uploads/${draft.value.id}/image-${crypto.randomUUID().slice(0, 8)}.${file.type.split("/")[1].replace("jpeg", "jpg")}`;
-    draft.value.assets.push({
-      path,
-      mime: file.type,
-      size: file.size,
-      dataUrl,
-    });
-    draft.value.sections.method += `\n\n![${file.name}](${path})`;
+  }
+  function removeAsset(path: string) {
+    draft.value.assets = draft.value.assets.filter((a) => a.path !== path);
   }
   async function preparedNote(): Promise<Note> {
     const note: Note = JSON.parse(JSON.stringify(draft.value));
+    const bound = await bindMarkdownImages(noteBody(note), [], note.id);
+    if (bound.assets.length) {
+      note.body = bound.text;
+      note.assets.push(
+        ...bound.assets.filter(
+          (a) => !note.assets.some((b) => b.path === a.path),
+        ),
+      );
+    }
+    const sources = imageSources(noteBody(note));
+    const missing = sources.filter(
+      (s) =>
+        !/^(https?:|data:)/i.test(s) && !note.assets.some((a) => a.path === s),
+    );
+    if (missing.length)
+      throw new Error(
+        `图片尚未绑定：${missing.join("、")}。请补充图片或删除失效引用。`,
+      );
+    note.assets = note.assets.filter(
+      (a) => a.mime === "application/pdf" || sources.includes(a.path),
+    );
+    note.sections = structureText(noteBody(note)).sections;
     if (retainPdf.value && paperFile.value) {
       if (paperFile.value.size > 4 * 1024 * 1024)
         throw new Error(
@@ -108,12 +177,22 @@ export function useImporter(existing?: Note | null) {
       note.assets = note.assets.filter((a) => a.path !== path);
       note.assets.push({
         path,
+        name: paperFile.value.name,
         mime: "application/pdf",
         size: paperFile.value.size,
         dataUrl,
       });
       note.sourceNames.push(paperFile.value.name);
     }
+    if (note.assets.length > 25) throw new Error("最多附带 25 个文件。");
+    if (
+      note.assets.some(
+        (a) => a.mime.startsWith("image/") && a.size > 2 * 1024 * 1024,
+      )
+    )
+      throw new Error("单张插图请控制在 2 MB 以内。");
+    if (note.assets.reduce((sum, a) => sum + a.size, 0) > 6 * 1024 * 1024)
+      throw new Error("一次发布的附件总量请控制在 6 MB 内。");
     return note;
   }
   async function recover() {
@@ -170,7 +249,9 @@ export function useImporter(existing?: Note | null) {
     draftSaved,
     recovered,
     selectFile,
+    selectFiles,
     addImage,
+    removeAsset,
     preparedNote,
     recover,
     clearDraft,

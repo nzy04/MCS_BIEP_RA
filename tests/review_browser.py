@@ -43,9 +43,10 @@ with sync_playwright() as p:
     page.get_by_role('button', name='上传笔记', exact=True).click()
     page.get_by_role('button', name='在线写笔记', exact=True).click()
     page.get_by_label('笔记标题', exact=True).fill('World Models')
-    page.get_by_label('一句话总结', exact=True).fill('学习潜在环境模型，减少策略训练所需的真实环境交互。')
-    page.get_by_label('我的思考', exact=True).fill('我希望进一步检验长时预测误差对规划和策略迁移的影响。')
-    original_insights = page.get_by_label('我的思考', exact=True).input_value()
+    original_insights = '我希望进一步检验长时预测误差对规划和策略迁移的影响。'
+    body = '## 问题与背景\n\n学习潜在环境模型，减少策略训练所需的真实环境交互。\n\n## 个人判断\n\n' + original_insights
+    page.get_by_role('button', name='Markdown', exact=True).click()
+    page.get_by_label('Markdown 正文', exact=True).fill(body)
     page.get_by_role('button', name='查看发布预览', exact=True).click()
     assert state['publish_calls'] == 0
     page.get_by_role('button', name='确认发布到仓库', exact=True).click()
@@ -59,8 +60,9 @@ with sync_playwright() as p:
     page.screenshot(path=str(out / 'review-feedback.png'), full_page=False)
     state['details'] = False
     page.get_by_role('button', name='修改笔记', exact=True).click()
-    assert page.get_by_label('我的思考', exact=True).input_value() == original_insights
-    page.get_by_label('方法与贡献', exact=True).fill('视觉编码器压缩图像，循环动态模型学习演化，控制器利用潜在状态决策。')
+    assert original_insights in page.get_by_role('textbox', name='笔记正文', exact=True).inner_text()
+    page.get_by_role('button', name='Markdown', exact=True).click()
+    page.get_by_label('Markdown 正文', exact=True).fill(body + '\n\n## 关键模块\n\n视觉编码器压缩图像，循环动态模型学习演化，控制器利用潜在状态决策。')
     page.get_by_role('button', name='查看发布预览', exact=True).click()
     page.get_by_role('button', name='确认发布到仓库', exact=True).click()
     page.locator('.review-status', has_text='审核中').wait_for()

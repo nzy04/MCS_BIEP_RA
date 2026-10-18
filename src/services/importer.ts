@@ -1,5 +1,6 @@
 import type { NoteAsset } from "../../shared/note";
 import DOMPurify from "dompurify";
+import { htmlToMarkdown } from "./htmlToMarkdown";
 export interface ParsedDocument {
   text: string;
   assets: NoteAsset[];
@@ -25,7 +26,6 @@ export async function parseDocument(
   }
   if (extension === "docx") {
     const { default: mammoth } = await import("mammoth/mammoth.browser");
-    const { default: Turndown } = await import("turndown");
     const assets: NoteAsset[] = [];
     const warnings: string[] = [];
     const result = await mammoth.convertToHtml(
@@ -34,6 +34,12 @@ export async function parseDocument(
         styleMap: [
           "p[style-name='Title'] => h1:fresh",
           "p[style-name='标题'] => h1:fresh",
+          "p.Heading1 => h2:fresh",
+          "p.Heading2 => h3:fresh",
+          "p.Heading3 => h4:fresh",
+          "p[style-name='heading 1'] => h2:fresh",
+          "p[style-name='heading 2'] => h3:fresh",
+          "p[style-name='heading 3'] => h4:fresh",
         ],
         convertImage: mammoth.images.imgElement(
           async (image: {
@@ -64,11 +70,7 @@ export async function parseDocument(
         ),
       },
     );
-    const converter = new Turndown({
-      headingStyle: "atx",
-      codeBlockStyle: "fenced",
-    });
-    const text = converter.turndown(DOMPurify.sanitize(result.value));
+    const text = htmlToMarkdown(DOMPurify.sanitize(result.value), assets);
     return {
       text,
       assets,

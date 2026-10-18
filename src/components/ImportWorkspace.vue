@@ -15,12 +15,13 @@ import {
   Eye,
 } from "lucide-vue-next";
 import {
-  toMarkdown,
   validateNote,
   type Note,
   type SiteConfig,
   type Session,
 } from "../../shared/note";
+import { noteBody } from "../../shared/document";
+import { exportNotePackage } from "../services/notePackage";
 import { useImporter } from "../composables/useImporter";
 import { getRecord } from "../services/storage";
 import TemplateEditor from "./TemplateEditor.vue";
@@ -49,7 +50,9 @@ const {
   draftSaved,
   recovered,
   selectFile,
+  selectFiles,
   addImage,
+  removeAsset,
   preparedNote,
   recover,
   clearDraft,
@@ -58,7 +61,11 @@ const hasDraft = shallowRef(false);
 const initialized = shallowRef(false);
 function syncAuthor() {
   // An untouched import screen must not autosave a blank draft over a recoverable one.
-  if (!initialized.value || (hasDraft.value && !props.existing && !recovered.value && step.value === 1)) return;
+  if (
+    !initialized.value ||
+    (hasDraft.value && !props.existing && !recovered.value && step.value === 1)
+  )
+    return;
   const user = props.user;
   if (user) {
     draft.value.author = user.name || user.login;
@@ -73,22 +80,21 @@ const commitUrl = shallowRef("");
 const remote = computed(
   () => props.config.configured && !!props.user?.canWrite,
 );
-const canContinue = computed(
-  () => !!noteFile.value || Object.values(draft.value.sections).some(Boolean),
-);
+const canContinue = computed(() => !!noteFile.value || !!noteBody(draft.value));
 onMounted(async () => {
   hasDraft.value = !!(await getRecord("draft"));
   initialized.value = true;
   syncAuthor();
 });
 function changed(event: Event, role: "note" | "paper") {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (file) void selectFile(file, role);
+  const files = Array.from((event.target as HTMLInputElement).files || []);
+  if (role === "note") void selectFiles(files);
+  else if (files[0]) void selectFile(files[0], role);
 }
 function dropped(event: DragEvent) {
   event.preventDefault();
-  const file = event.dataTransfer?.files[0];
-  if (file) void selectFile(file, "note");
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (files.length) void selectFiles(files);
 }
 function next() {
   error.value = "";
@@ -120,16 +126,18 @@ async function publish() {
     publishing.value = false;
   }
 }
-function download() {
-  const blob = new Blob([toMarkdown(draft.value)], {
-    type: "text/markdown;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${draft.value.title.replace(/[\\/:*?"<>|]/g, "-") || "阅读笔记"}.md`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+async function downloadPackage() {
+  try {
+    const blob = await exportNotePackage(draft.value, props.assetBase);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${draft.value.title || "阅读笔记"}.zip`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
 }
 </script>
 <template>
@@ -177,7 +185,8 @@ function download() {
             ><input
               data-testid="note-file"
               type="file"
-              accept=".pdf,.docx,.md,.markdown,.txt,.doc"
+              accept=".pdf,.docx,.md,.markdown,.txt,.doc,.zip,.png,.jpg,.jpeg,.webp,.gif"
+              multiple
               :disabled="busy"
               @change="changed($event, 'note')"
             /><span class="upload-icon"><UploadCloud :size="28" /></span
@@ -188,8 +197,8 @@ function download() {
                   ? noteFile.name
                   : "选择或拖入文件"
             }}</strong
-            ><span>PDF / DOCX / MD / TXT · 最大 15 MB</span
-            ><small v-if="noteFile"
+            ><span>PDF / DOCX / MD / TXT / ZIP</span
+            ><span>一份笔记，可同时选择配套图片</span> ><small v-if="noteFile"
               ><Check :size="13" />已解析，可继续整理</small
             ></label
           ><button class="text-link manual-note" @click="step = 2">
@@ -231,10 +240,18 @@ function download() {
       ><div class="editor-columns">
         <section class="editor-panel">
           <div class="panel-heading">
-            <h2>笔记模板</h2>
+            <h2>整理笔记</h2>
             <span>{{ draftSaved || "自动保存草稿" }}</span>
           </div>
-          <TemplateEditor v-model="draft" :author-locked="!!user" @image="addImage" />
+
+          <TemplateEditor
+            v-model="draft"
+            :author-locked="!!user"
+            :asset-base="assetBase"
+            :paper-file="paperFile"
+            :add-image="addImage"
+            @remove-asset="removeAsset"
+          />
         </section>
         <aside class="source-panel">
           <div class="source-tabs">
@@ -274,8 +291,8 @@ function download() {
           <ArrowLeft :size="15" />返回导入
         </button>
         <div class="action-group">
-          <button class="button ghost" @click="download">
-            <Download :size="16" />导出 Markdown</button
+          <button class="button ghost" @click="downloadPackage">
+            <Download :size="16" />导出笔记包</button
           ><button class="button primary" @click="next">
             查看发布预览 <ArrowRight :size="16" />
           </button>
@@ -327,8 +344,8 @@ function download() {
                   ? "确认发布到仓库"
                   : "确认保存到本机"
             }}</button
-          ><button class="button ghost full" @click="download">
-            <Download :size="16" />下载 Markdown</button
+          ><button class="button ghost full" @click="downloadPackage">
+            <Download :size="16" />导出笔记包</button
           ><button class="text-link" @click="step = 2">
             <ArrowLeft :size="14" />返回修改</button
           ><a v-if="commitUrl" :href="commitUrl" target="_blank" rel="noopener"

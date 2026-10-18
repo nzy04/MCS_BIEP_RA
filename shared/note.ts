@@ -1,4 +1,7 @@
 import type { ReviewReceipt } from "./review";
+
+import { noteBody, meaningfulBody, githubBody } from "./document";
+
 export const sectionDefinitions = [
   {
     key: "summary",
@@ -17,6 +20,7 @@ export const sectionDefinitions = [
       "background",
       "motivation",
       "本文挑战及已有工作不足",
+      "研究问题与已有工作不足",
     ],
   },
   {
@@ -34,6 +38,7 @@ export const sectionDefinitions = [
       "contribution",
       "一句话总结创新贡献",
       "框架图",
+      "主要贡献",
     ],
   },
   {
@@ -47,6 +52,7 @@ export const sectionDefinitions = [
       "evaluation",
       "experiments",
       "results",
+      "实验结果与分析",
     ],
   },
   {
@@ -59,6 +65,7 @@ export const sectionDefinitions = [
       "未来工作",
       "limitations",
       "还有哪些不足的地方",
+      "局限与后续问题",
     ],
   },
   {
@@ -74,12 +81,15 @@ export const sectionDefinitions = [
       "印象最深刻的点",
       "insights",
       "notes",
+      "阅读思考",
+      "个人判断与论文关联",
     ],
   },
   { key: "original", label: "其他原始笔记", aliases: [] },
 ] as const;
 export type SectionKey = (typeof sectionDefinitions)[number]["key"];
 export interface NoteAsset {
+  name?: string;
   path: string;
   mime: string;
   size: number;
@@ -106,6 +116,8 @@ export interface NoteSummary {
   demo?: boolean;
 }
 export interface Note extends NoteSummary {
+  /** Full Markdown document. Absent in legacy notes, whose sections remain readable. */
+  body?: string;
   sections: Record<SectionKey, string>;
   assets: NoteAsset[];
   sourceNames: string[];
@@ -162,10 +174,16 @@ export function createNote(): Note {
   };
 }
 export function summarize(note: Note): NoteSummary {
-  const { sections, assets, sourceNames, review, ...entry } = note;
+  const { body, sections, assets, sourceNames, review, ...entry } = note;
+
   return {
     ...entry,
-    excerpt: (sections.summary || sections.problem || sections.original)
+    excerpt: (
+      body ??
+      (sections.summary || sections.problem || sections.original)
+    )
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+      .replace(/<[^>]*>/g, "")
       .replace(/[#*_`>]/g, "")
       .slice(0, 170),
   };
@@ -231,19 +249,17 @@ export function toMarkdown(note: Note): string {
   const frontmatter = Object.entries(metadata)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join("\n");
+
   const reviewText = note.review
     ? `\n\n## 审核与资料补充\n\n研究方向：${note.review.directions.join("、")}\n\n${note.review.supplements.map((s) => `- 自动补充 ${s.field}：${s.value}（来源：${s.sourceUrl}）`).join("\n")}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`
     : "";
-  return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${sectionDefinitions
-    .filter((s) => note.sections[s.key])
-    .map((s) => `## ${s.label}\n\n${note.sections[s.key]}`)
-    .join("\n\n")}${reviewText}\n`;
+  return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${githubBody(noteBody(note))}${reviewText}\n`;
 }
 export function validateNote(note: Note): string[] {
   const errors: string[] = [];
   if (!note.title.trim()) errors.push("请填写笔记标题。");
   if (note.title.length > 250) errors.push("标题请控制在 250 字以内。");
-  if (!Object.values(note.sections).some((t) => t.trim()))
+  if (!meaningfulBody(noteBody(note)))
     errors.push("请填写或导入至少一段笔记内容。");
   for (const url of [note.paperUrl, note.codeUrl])
     if (url && !/^https?:\/\//i.test(url))

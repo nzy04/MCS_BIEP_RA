@@ -5,7 +5,10 @@ import {
   structureText,
   toMarkdown,
   emptySections,
+  summarize,
+  validateNote,
 } from "../shared/note";
+import { noteBody, importBody, readingTemplate } from "../shared/document";
 import { handle, seal, unseal, commitNote, type Env } from "../worker/index";
 const env: Env = {
   ASSETS: { fetch: async () => new Response("site") },
@@ -50,6 +53,23 @@ test("Markdown 元信息中的特殊字符不会破坏 frontmatter", () => {
   const md = toMarkdown(n);
   assert.ok(md.includes('title: "标题: \\"引号\\"\\n下一行"'));
   assert.match(md, /## 一句话总结/);
+});
+test("完整正文保留自定义章节、图表顺序与旧笔记读取", () => {
+  const n = note();
+  assert.match(noteBody(n), /## 一句话总结/);
+  const content =
+    '# 标题\n\n## 自定义第二章\n原文A\n\n![框架](assets/uploads/note-id/a.png)\n\n## 自定义第一章\n原文B\n\n<table><tr><td colspan="2">0.31</td></tr></table>';
+  const imported = importBody(content);
+  assert.equal(imported.title, "标题");
+  n.body = imported.body;
+  const output = toMarkdown(n);
+  assert.ok(output.indexOf("自定义第二章") < output.indexOf("自定义第一章"));
+  assert.match(output, /\.\.\/assets\/uploads\/note-id\/a.png/);
+  assert.match(output, /colspan="2"/);
+  assert.ok(!output.includes("## 一句话总结"));
+  assert.ok(!("body" in summarize(n)));
+  n.body = readingTemplate;
+  assert.ok(validateNote(n).some((e) => e.includes("至少一段")));
 });
 test("会话加密，篡改或密钥错误时拒绝", async () => {
   const encrypted = await seal(user, env.SESSION_SECRET);
@@ -192,6 +212,30 @@ test("一次提交包含笔记、Markdown 和索引，身份来自会话且不�
   assert.equal(git.read().index.notes[0].title, n.title);
   assert.equal(git.read().oldNote.sections.summary, n.sections.summary);
 });
+test("服务端发布完整正文，目录不携带正文，格式修改产生新版本", async () => {
+  const git = fakeGit();
+  const n = note();
+  n.body =
+    "## 框架图\n\n保持用户自定义正文和图注。\n\n## 讨论\n\n需要补充长期预测分析。";
+  const first = await commitNote(
+    env,
+    user,
+    { note: n, assets: [], baseRevision: "" },
+    git.fetcher,
+  );
+  assert.equal(git.read().oldNote.body, n.body);
+  assert.ok(!("body" in git.read().index.notes[0]));
+  n.body =
+    "## 讨论\n\n需要补充长期预测分析。\n\n## 框架图\n\n保持用户自定义正文和图注。";
+  const second = await commitNote(
+    env,
+    user,
+    { note: n, assets: [], baseRevision: first.note.revision },
+    git.fetcher,
+  );
+  assert.notEqual(first.note.revision, second.note.revision);
+  assert.equal(git.read().oldNote.body, n.body);
+});
 test("分支前进时重新合并提交，旧版本不能覆盖新笔记", async () => {
   const git = fakeGit({ conflict: true });
   const n = note();
@@ -278,4 +322,33 @@ test("真实附件大小的 base64 不会使校验正则溢出", async () => {
     git.fetcher,
   );
   assert.equal(git.read().pendingFiles.length, 4);
+});
+test("更新笔记时只移除该笔记已不再使用的附件", async () => {
+  const n = note(),
+    git = fakeGit();
+  const data = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+  const path = `assets/uploads/${n.id}/old.png`;
+  n.assets = [{ path, mime: "image/png", size: data.length }];
+  const first = await commitNote(
+    env,
+    user,
+    {
+      note: n,
+      baseRevision: "",
+      assets: [{ path, mime: "image/png", base64: data.toString("base64") }],
+    },
+    git.fetcher,
+  );
+  n.assets = [];
+  n.body = "## 阅读思考\n\n原图已删除，正文保留。";
+  await commitNote(
+    env,
+    user,
+    { note: n, baseRevision: first.note.revision, assets: [] },
+    git.fetcher,
+  );
+  assert.deepEqual(
+    git.read().pendingFiles.filter((f: any) => f.sha === null),
+    [{ path, mode: "100644", type: "blob", sha: null }],
+  );
 });
