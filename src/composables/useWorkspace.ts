@@ -2,8 +2,10 @@ import { ref, shallowRef, onMounted, onUnmounted, computed } from "vue";
 import type { Note, NoteSummary, Session, SiteConfig } from "../../shared/note";
 import { summarize, createNote } from "../../shared/note";
 import { groupPapers, ownsNote } from "../../shared/papers";
+import type { PaperRecord, PaperSummary } from "../../shared/catalog";
 import { reviewPending } from "../../shared/review";
 import { useReviewJobs } from "./useReviewJobs";
+import { useDirections } from "./useDirections";
 import * as api from "../services/api";
 import {
   localNotes,
@@ -35,6 +37,16 @@ export function useWorkspace() {
     () => reviews.jobs.value.filter((j) => reviewPending(j.status)).length,
   );
   const notes = ref<NoteSummary[]>([]);
+  const catalog = ref<PaperSummary[]>([]);
+  const selectedCatalog = ref<PaperRecord | null>(null);
+  const catalogNotes = computed(() =>
+    selectedCatalog.value
+      ? groupPapers(notes.value, catalog.value).find(
+          (p) => p.record?.id === selectedCatalog.value!.id,
+        )?.notes || []
+      : [],
+  );
+  const directions = useDirections(configuration, user, notes);
   const selectedNote = ref<Note | null>(null);
   const editingNote = ref<Note | null>(null);
   const view = shallowRef("library");
@@ -70,13 +82,19 @@ export function useWorkspace() {
   }
   async function refresh() {
     try {
-      remoteNotes.value = await api.library(configuration.value.configured);
+      const [library, papers] = await Promise.all([
+        api.library(configuration.value.configured),
+        api.catalog(configuration.value.configured),
+      ]);
+      remoteNotes.value = library;
+      catalog.value = papers;
       const local = await localNotes();
       const ids = new Set(local.map((n) => n.id));
       notes.value = [
         ...local.map(summarize),
         ...remoteNotes.value.filter((n) => !ids.has(n.id)),
       ];
+      await directions.refresh();
     } catch (error) {
       notify((error as Error).message, "error");
     }
@@ -90,6 +108,15 @@ export function useWorkspace() {
     const request = ++openRequest;
     loading.value = true;
     try {
+      if (/^paper-[a-f0-9]{32}$/.test(id)) {
+        const paper = await api.loadPaper(id);
+        if (request !== openRequest) return;
+        selectedCatalog.value = paper;
+        view.value = "catalog";
+        location.hash = `paper/${id}`;
+        window.scrollTo(0, 0);
+        return;
+      }
       const note =
         (await localNotes()).find((n) => n.id === id) ??
         (await api.loadNote(id, configuration.value.configured));
@@ -104,11 +131,17 @@ export function useWorkspace() {
       if (request === openRequest) loading.value = false;
     }
   }
-  function beginImport(note?: Note) {
+  function beginImport(note?: Note, direction?: string) {
+    if (!note && direction) note = { ...createNote(), tags: [direction] };
     editingNote.value = note ? JSON.parse(JSON.stringify(note)) : null;
     navigate("import");
   }
-  function contribute(note: Note) {
+  function contribute(
+    note: Pick<
+      Note,
+      "title" | "subtitle" | "paperUrl" | "codeUrl" | "venue" | "year" | "tags"
+    >,
+  ) {
     beginImport({
       ...createNote(),
       title: note.title,
@@ -120,6 +153,17 @@ export function useWorkspace() {
       tags: [...note.tags],
       author: user.value?.name || "",
     });
+  }
+  async function collect(token: string, tags: string[]) {
+    try {
+      const { job } = await api.collectPaper(token, tags);
+      reviews.upsert(job);
+      navigate("reviews");
+      notify(job.status === "published" ? "论文已收录。" : "论文收录中。");
+    } catch (e) {
+      if (e instanceof api.ApiError && e.status === 401) user.value = null;
+      throw e;
+    }
   }
   async function saveProfile(nickname: string) {
     let result: Awaited<ReturnType<typeof api.updateProfile>>;
@@ -237,7 +281,7 @@ export function useWorkspace() {
     try {
       const { job } = await api.retryReview(id);
       reviews.upsert(job);
-      notify("笔记审核中。");
+      notify(job.kind === "paper" ? "论文收录中。" : "笔记审核中。");
     } catch (error) {
       if (error instanceof api.ApiError && error.status === 401)
         user.value = null;
@@ -248,9 +292,11 @@ export function useWorkspace() {
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash.startsWith("paper/")) {
       if (selectedNote.value?.id === hash.slice(6)) view.value = "reader";
+      else if (selectedCatalog.value?.id === hash.slice(6))
+        view.value = "catalog";
       else void openNote(hash.slice(6));
     } else
-      view.value = ["import", "reviews", "guide"].includes(hash)
+      view.value = ["import", "reviews", "guide", "collect"].includes(hash)
         ? hash
         : "library";
   }
@@ -278,6 +324,11 @@ export function useWorkspace() {
     reviews,
     pendingReviews,
     notes,
+    catalog,
+    selectedCatalog,
+    catalogNotes,
+    collect,
+    directions,
     selectedNote,
     editingNote,
     view,

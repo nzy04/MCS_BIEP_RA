@@ -12,7 +12,10 @@ import {
 import type { ReviewQueueNamespace, ReviewReceipt } from "../shared/review";
 import { ownsNote } from "../shared/papers";
 import { profileSession, updateProfile } from "./profile";
+import { createDirection, repositoryDirections } from "./directions";
+import { directionName, mergeDirections } from "../shared/directions";
 import { checkDeepseek } from "./review";
+import type { PaperCandidate, PaperSummary } from "../shared/catalog";
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   SITE_TITLE: string;
@@ -276,6 +279,12 @@ export function validateIncoming(value: any): {
       throw new HttpError(400, "附件内容与文件类型不匹配。");
   }
   const now = new Date().toISOString();
+  let tags: string[];
+  try {
+    tags = mergeDirections(input.tags.map(directionName));
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
   const note: Note = {
     id: input.id,
     title: text("title", 250),
@@ -286,7 +295,7 @@ export function validateIncoming(value: any): {
     codeUrl: text("codeUrl", 1500),
     author: text("author", 100),
     authorLogin: "",
-    tags: input.tags,
+    tags,
     readingDepth: text("readingDepth", 30),
     createdAt: now,
     updatedAt: now,
@@ -569,8 +578,15 @@ async function readPublic(env: Env, path: string) {
   const response = await fetch(source.toString(), {
     headers: { "User-Agent": "MCS-BIEP-RA" },
   });
-  if (response.status === 404 && path === "data/library.json")
-    return json({ version: 1, notes: [] });
+  if (
+    response.status === 404 &&
+    [
+      "data/library.json",
+      "data/directions.json",
+      "data/papers/index.json",
+    ].includes(path)
+  )
+    return json({ version: 1, notes: [], directions: [], papers: [] });
   if (!response.ok)
     throw new HttpError(
       response.status === 404 ? 404 : 502,
@@ -604,32 +620,7 @@ export async function repositoryTags(
   user: Identity,
   fetcher: typeof fetch = fetch,
 ): Promise<string[]> {
-  try {
-    const file = await github<any>(
-      env,
-      `/repos/${repository(env)}/contents/data/library.json?ref=${encodeURIComponent(env.GITHUB_BRANCH || "main")}`,
-      user.token,
-      {},
-      fetcher,
-    );
-    const index = JSON.parse(
-      new TextDecoder().decode(
-        Uint8Array.from(atob(file.content.replace(/\s/g, "")), (c) =>
-          c.charCodeAt(0),
-        ),
-      ),
-    );
-    return [
-      ...new Set<string>(
-        (index.notes || []).flatMap((n: NoteSummary) => n.tags || []),
-      ),
-    ]
-      .filter((t) => typeof t === "string" && t.length <= 50)
-      .slice(0, 80);
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 401) throw error;
-    return [];
-  }
+  return repositoryDirections(env, user, fetcher);
 }
 function reviewService(env: Env) {
   if (!env.REVIEW_QUEUE)
@@ -807,6 +798,109 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!configured(env)) return json({ notes: [] });
       return await readPublic(env, "data/library.json");
     }
+    if (path === "/api/papers" && request.method === "GET") {
+      if (!configured(env)) return json({ papers: [] });
+      return readPublic(env, "data/papers/index.json");
+    }
+    const paperMatch = path.match(/^\/api\/papers\/(paper-[a-f0-9]{32})$/);
+    if (paperMatch && request.method === "GET") {
+      if (!configured(env)) throw new HttpError(404, "仓库尚未配置。");
+      return readPublic(env, `data/papers/${paperMatch[1]}.json`);
+    }
+    if (
+      ["/api/paper-search", "/api/paper-collect"].includes(path) &&
+      request.method === "POST"
+    ) {
+      requireOrigin(request);
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub，再收录论文。");
+      await assertWriteAccess(env, user);
+      if (Number(request.headers.get("Content-Length") || 0) > 128_000)
+        throw new HttpError(413, "请求内容过大。");
+      const raw = await request.text();
+      if (raw.length > 128_000) throw new HttpError(413, "请求内容过大。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "请求格式不正确。");
+      }
+      let paper: PaperCandidate | undefined;
+      if (path === "/api/paper-collect") {
+        if (typeof value?.token !== "string" || value.token.length > 110_000)
+          throw new HttpError(400, "请先检索并选择论文。");
+        const choice = await unseal<{
+          candidate: PaperCandidate;
+          owner: number;
+          expires: number;
+        }>(value.token, env.SESSION_SECRET);
+        if (
+          !choice ||
+          choice.owner !== user.id ||
+          !Number.isFinite(choice.expires) ||
+          choice.expires <= Date.now() ||
+          !choice.candidate
+        )
+          throw new HttpError(400, "候选已失效，请重新检索论文。");
+        paper = { ...choice.candidate };
+        if (value.tags !== undefined) {
+          if (!Array.isArray(value.tags) || value.tags.length > 8)
+            throw new HttpError(400, "最多选择 8 个研究方向。");
+          try {
+            paper.tags = mergeDirections(value.tags.map(directionName));
+          } catch (e) {
+            throw new HttpError(400, (e as Error).message);
+          }
+        }
+      }
+      return reviewService(env).fetch(
+        new Request("https://review.internal/api/papers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: paper ? "paper-submit" : "paper-search",
+            user,
+            paper,
+            query: value?.query,
+          }),
+        }),
+      );
+    }
+    if (path === "/api/directions" && request.method === "GET") {
+      if (!configured(env)) return json({ directions: [] });
+      const [catalog, index, papers] = await Promise.all([
+        readPublic(env, "data/directions.json").then((r) =>
+          r.json(),
+        ) as Promise<{ directions?: string[] }>,
+        readPublic(env, "data/library.json").then((r) => r.json()) as Promise<{
+          notes: NoteSummary[];
+        }>,
+        readPublic(env, "data/papers/index.json").then((r) =>
+          r.json(),
+        ) as Promise<{ papers: PaperSummary[] }>,
+      ]);
+      return json({
+        directions: mergeDirections(
+          catalog.directions || [],
+          index.notes.flatMap((n) => n.tags || []),
+          papers.papers.flatMap((p) => p.tags || []),
+        ),
+      });
+    }
+    if (path === "/api/directions" && request.method === "POST") {
+      requireOrigin(request);
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub，再新建研究方向。");
+      const raw = await request.text();
+      if (raw.length > 1024) throw new HttpError(413, "研究方向名称过长。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "研究方向格式不正确。");
+      }
+      return json(await createDirection(env, user, value?.name));
+    }
     const noteMatch = path.match(/^\/api\/notes\/(note-[a-f0-9-]{36})$/);
     if (noteMatch && request.method === "GET") {
       if (!configured(env)) throw new HttpError(404, "仓库尚未配置。");
@@ -842,8 +936,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (request.method === "POST") {
         requireOrigin(request);
         if (!reviewMatch?.[2]) throw new HttpError(405, "请求方式不支持。");
-        if (!env.DEEPSEEK_API_KEY)
-          throw new HttpError(503, "维护者尚未配置共享 DeepSeek 审核密钥。");
         await assertWriteAccess(env, user);
       } else if (reviewMatch?.[2]) throw new HttpError(405, "请求方式不支持。");
       return await reviewService(env).fetch(

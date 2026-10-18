@@ -1,18 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import type { Note } from "../../shared/note";
 defineProps<{ authorLocked?: boolean }>();
 const note = defineModel<Note>({ required: true });
-const tags = computed({
-  get: () => note.value.tags.join("，"),
-  set: (value: string) => {
-    note.value.tags = value
-      .split(/[,，]/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .slice(0, 8);
-  },
-});
 </script>
 <template>
   <div class="metadata-fields">
@@ -41,8 +30,6 @@ const tags = computed({
       /></label>
     </div>
     <label class="field"
-      >方向标签<input v-model="tags" placeholder="用逗号分隔" /></label
-    ><label class="field"
       >论文链接<input
         v-model="note.paperUrl"
         type="url"

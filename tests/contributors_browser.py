@@ -39,6 +39,8 @@ def fixture(route):
         route.fulfill(json=account if state["signed_in"] else None)
     elif path == "library":
         route.fulfill(json={"notes": notes})
+    elif path == "directions":
+        route.fulfill(json={"directions": ["世界模型"]})
     elif path.startswith("notes/"):
         found = next(n for n in notes if n["id"] == path.split("/")[1])
         route.fulfill(json=found)

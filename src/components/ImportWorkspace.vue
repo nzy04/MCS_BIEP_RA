@@ -32,6 +32,9 @@ const props = defineProps<{
   user: Session | null;
   assetBase: string;
   save: (note: Note, remote: boolean, baseRevision: string) => Promise<string>;
+  directions: string[];
+  canCreateDirection: boolean;
+  createDirection: (name: string) => Promise<string>;
 }>();
 const emit = defineEmits<{ back: []; login: [] }>();
 const {
@@ -245,6 +248,9 @@ async function downloadPackage() {
           </div>
 
           <TemplateEditor
+            :directions="directions"
+            :can-create-direction="canCreateDirection"
+            :create-direction="createDirection"
             v-model="draft"
             :author-locked="!!user"
             :asset-base="assetBase"

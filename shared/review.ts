@@ -24,10 +24,12 @@ export interface ReviewReceipt {
   reviewedAt: string;
   model: string;
   directions: string[];
+  directionSource?: "manual" | "model";
   sources: ReviewSource[];
   supplements: ReviewSupplement[];
 }
 export interface ReviewJobSummary {
+  kind?: "paper";
   id: string;
   noteId: string;
   title: string;

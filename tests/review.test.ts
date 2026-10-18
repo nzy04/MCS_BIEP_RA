@@ -58,6 +58,38 @@ function model(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("手动选择的自定义文件夹完全保留，模型不能追加或改写", async () => {
+  const n = note(); n.tags = ["我的课题 / 子方向", "A"];
+  const outcome = await reviewSubmission(n, env, [], async (_url, init) => {
+    const request = JSON.parse(String(init?.body));
+    const payload = JSON.parse(request.messages[1].content);
+    assert.equal(payload.directionMode, "manual");
+    assert.deepEqual(payload.selectedDirections, n.tags);
+    return chat(model({ directions: ["模型想追加的方向"] }));
+  });
+  assert.equal(outcome.approved, true);
+  assert.deepEqual(outcome.note.tags, n.tags);
+  assert.deepEqual(outcome.receipt?.directions, n.tags);
+  assert.equal(outcome.receipt?.directionSource, "manual");
+});
+
+test("未选择时复用空目录名称，支持模型创建全新学科方向且不额外增加请求", async () => {
+  let calls = 0;
+  const n = note();
+  const outcome = await reviewSubmission(n, env, ["我的空文件夹"], async (_url, init) => {
+    calls++;
+    const payload = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
+    assert.equal(payload.directionMode, "automatic");
+    assert.deepEqual(payload.existingDirections, ["我的空文件夹"]);
+    assert.deepEqual(payload.selectedDirections, []);
+    return chat(model({ directions: ["我的空文件夹", "全新的自定义学科"] }));
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(outcome.note.tags, ["我的空文件夹", "全新的自定义学科"]);
+  assert.equal(outcome.receipt?.directionSource, "model");
+  await assert.rejects(reviewSubmission(n, env, [], async () => chat(model({ directions: [] }))), /格式校验/);
+});
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,

@@ -1,33 +1,70 @@
 <script setup lang="ts">
 import { computed, shallowRef } from "vue";
-import { Search } from "lucide-vue-next";
+import { Search, Folder } from "lucide-vue-next";
 import type { NoteSummary, SiteConfig } from "../../shared/note";
+import type { PaperSummary } from "../../shared/catalog";
 import { groupPapers, countContributors } from "../../shared/papers";
+import { directionKey, mergeDirections } from "../../shared/directions";
 import PaperCard from "./PaperCard.vue";
 import LibraryToolbar from "./LibraryToolbar.vue";
+import DirectionCreateForm from "./DirectionCreateForm.vue";
 const props = defineProps<{
   notes: NoteSummary[];
+  catalog?: PaperSummary[];
   config: SiteConfig;
   loading: boolean;
+  directions: string[];
+  canCreateDirection: boolean;
+  createDirection: (name: string) => Promise<string>;
 }>();
-defineEmits<{ open: [id: string]; create: []; refresh: []; setup: [] }>();
+defineEmits<{
+  open: [id: string];
+  create: [direction?: string];
+  refresh: [];
+  setup: [];
+}>();
 const query = shallowRef("");
-const selectedTag = shallowRef("全部论文");
+const selectedTag = shallowRef<string | null>(null);
 const sort = shallowRef("recent");
 const layout = shallowRef("list");
 const tags = computed(() =>
-  [...new Set(props.notes.flatMap((n) => n.tags))].sort(),
+  mergeDirections(
+    props.directions,
+    props.notes.flatMap((n) => n.tags),
+    (props.catalog || []).flatMap((p) => p.tags),
+  ).sort((a, b) => a.localeCompare(b, "zh-CN")),
 );
-const papers = computed(() => groupPapers(props.notes));
+const papers = computed(() => groupPapers(props.notes, props.catalog));
 const authors = computed(() => countContributors(props.notes));
-const tagCounts = computed(() => new Map(tags.value.map(tag => [tag, papers.value.filter(p => p.tags.includes(tag)).length])));
+const tagCounts = computed(
+  () =>
+    new Map(
+      tags.value.map((tag) => [
+        tag,
+        papers.value.filter((p) =>
+          p.tags.some((t) => directionKey(t) === directionKey(tag)),
+        ).length,
+      ]),
+    ),
+);
 const filtered = computed(() =>
   papers.value
     .filter(
       (n) =>
-        (selectedTag.value === "全部论文" ||
-          n.tags.includes(selectedTag.value)) &&
-        n.notes.map(note => `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`).join(" ")
+        (selectedTag.value === null ||
+          n.tags.some(
+            (t) => directionKey(t) === directionKey(selectedTag.value!),
+          )) &&
+        [
+          n.record
+            ? `${n.record.title} ${n.record.authors.join(" ")} ${n.tags.join(" ")}`
+            : "",
+          ...n.notes.map(
+            (note) =>
+              `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`,
+          ),
+        ]
+          .join(" ")
           .toLowerCase()
           .includes(query.value.toLowerCase()),
     )
@@ -39,7 +76,7 @@ const filtered = computed(() =>
 );
 function resetFilters() {
   query.value = "";
-  selectedTag.value = "全部论文";
+  selectedTag.value = null;
 }
 </script>
 <template>
@@ -48,7 +85,8 @@ function resetFilters() {
       <h1>文献库</h1>
       <section class="library-stats" aria-label="文献库统计">
         <span
-          ><strong>{{ papers.length }}</strong> 篇论文 · {{ notes.length }} 份笔记</span
+          ><strong>{{ papers.length }}</strong> 篇论文 ·
+          {{ notes.length }} 份笔记</span
         >
         <span
           ><strong>{{ tags.length }}</strong> 个方向</span
@@ -62,9 +100,9 @@ function resetFilters() {
       <aside class="topics" aria-label="研究方向">
         <h2 class="sidebar-heading">研究方向</h2>
         <button
-          :class="{ selected: selectedTag === '全部论文' }"
-          :aria-pressed="selectedTag === '全部论文'"
-          @click="selectedTag = '全部论文'"
+          :class="{ selected: selectedTag === null }"
+          :aria-pressed="selectedTag === null"
+          @click="selectedTag = null"
         >
           全部文献 <span>{{ papers.length }}</span>
         </button>
@@ -75,9 +113,14 @@ function resetFilters() {
           :aria-pressed="selectedTag === tag"
           @click="selectedTag = tag"
         >
-          {{ tag
-          }}<span>{{ tagCounts.get(tag) }}</span>
+          <span class="direction-name"><Folder :size="14" />{{ tag }}</span
+          ><span>{{ tagCounts.get(tag) }}</span>
         </button>
+        <DirectionCreateForm
+          v-if="canCreateDirection"
+          :create="createDirection"
+          @created="selectedTag = $event"
+        />
       </aside>
       <section class="library-results" aria-label="文献列表">
         <LibraryToolbar
@@ -87,7 +130,7 @@ function resetFilters() {
           @refresh="$emit('refresh')"
         />
         <div class="library-title-row">
-          <h2>{{ selectedTag === "全部论文" ? "全部文献" : selectedTag }}</h2>
+          <h2>{{ selectedTag === null ? "全部文献" : selectedTag }}</h2>
           <span class="result-count"
             >{{ filtered.length }} 篇<span v-if="query">
               · {{ query }}</span
@@ -97,15 +140,34 @@ function resetFilters() {
         <div v-if="loading" class="empty-state">正在加载…</div>
         <div v-else-if="!filtered.length" class="empty-state">
           <Search :size="24" />
-          <h3>{{ notes.length ? "无匹配文献" : "暂无笔记" }}</h3>
+          <h3>
+            {{
+              selectedTag && !query
+                ? "这个方向还没有论文"
+                : papers.length
+                  ? "无匹配文献"
+                  : "暂无论文"
+            }}
+          </h3>
           <button
-            v-if="notes.length"
+            v-if="selectedTag"
+            class="button primary"
+            @click="$emit('create', selectedTag)"
+          >
+            在此方向添加笔记
+          </button>
+          <button
+            v-if="papers.length"
             class="button secondary"
             @click="resetFilters"
           >
             清除筛选
           </button>
-          <button v-else class="button primary" @click="$emit('create')">
+          <button
+            v-else-if="!selectedTag"
+            class="button primary"
+            @click="$emit('create')"
+          >
             上传第一篇笔记
           </button>
         </div>
@@ -129,3 +191,15 @@ function resetFilters() {
     </div>
   </main>
 </template>
+<style scoped>
+.direction-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.direction-name svg {
+  flex-shrink: 0;
+}
+</style>

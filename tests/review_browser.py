@@ -12,6 +12,8 @@ def fixture(route):
     path = route.request.url.split('/api/', 1)[1]
     if path == 'config':
         route.fulfill(json={'title': 'MCS_BIEP', 'configured': True, 'authConfigured': True, 'reviewConfigured': True, 'repository': 'test-group/test-repo', 'branch': 'main'})
+    elif path == 'directions':
+        route.fulfill(json={'directions': []})
     elif path == 'session':
         route.fulfill(json={'id': 7, 'login': 'test-member', 'name': '测试成员', 'githubName': '测试成员', 'nickname': '', 'avatar': '', 'canWrite': True})
     elif path == 'library':

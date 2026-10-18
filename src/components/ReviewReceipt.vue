@@ -6,7 +6,7 @@ const labels = { paperUrl: "论文链接", year: "发表年份", venue: "会议 
 <template>
   <details class="review-receipt">
     <summary>归类与补充来源</summary>
-    <p>研究方向：{{ receipt.directions.join("、") }}</p>
+    <p>研究方向{{ receipt.directionSource === 'manual' ? '（手动选择）' : receipt.directionSource === 'model' ? '（自动归类）' : '' }}：{{ receipt.directions.join("、") }}</p>
     <ul v-if="receipt.supplements.length">
       <li v-for="(item, i) in receipt.supplements" :key="i">
         自动补充{{ labels[item.field] }}：<a

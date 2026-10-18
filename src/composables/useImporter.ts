@@ -19,7 +19,7 @@ export function useImporter(existing?: Note | null) {
     existing ? JSON.parse(JSON.stringify(existing)) : createNote(),
   );
   const baseRevision = shallowRef(existing?.revision ?? "");
-  const step = shallowRef(existing ? 2 : 1);
+  const step = shallowRef(existing?.title ? 2 : 1);
   const busy = shallowRef(false);
   const error = shallowRef("");
   const warnings = ref<string[]>([]);

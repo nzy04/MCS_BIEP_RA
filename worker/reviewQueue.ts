@@ -12,6 +12,9 @@ import {
   validateIncoming,
 } from "./app";
 import { reviewSubmission, POLICY_VERSION, type ReviewStage } from "./review";
+import type { PaperCandidate } from "../shared/catalog";
+import { lookupPapers } from "./paperLookup";
+import { collectPaper, paperId } from "./paperCatalog";
 
 export interface QueueStorage {
   get<T>(key: string): Promise<T | undefined>;
@@ -37,7 +40,8 @@ interface Job extends ReviewJobSummary {
 type Submission = ReturnType<typeof validateIncoming>;
 interface Payload {
   user: Identity;
-  value: Submission;
+  value?: Submission;
+  paper?: PaperCandidate;
 }
 interface Usage {
   total: number;
@@ -48,6 +52,8 @@ interface Dependencies {
   tags: typeof repositoryTags;
   review: typeof reviewSubmission;
   commit: typeof commitNote;
+  collect: typeof collectPaper;
+  lookup: typeof lookupPapers;
 }
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -83,6 +89,8 @@ export class ReviewQueue {
       tags: repositoryTags,
       review: reviewSubmission,
       commit: commitNote,
+      collect: collectPaper,
+      lookup: lookupPapers,
       ...deps,
     };
   }
@@ -138,9 +146,17 @@ export class ReviewQueue {
   private async schedule() {
     const now = Date.now(),
       jobs = await this.jobs();
+    const searches = [
+      ...(
+        await this.state.storage.list<{ expires: number }>({
+          prefix: "search:",
+        })
+      ).values(),
+    ];
     const time = jobs.some((j) => reviewPending(j.status))
       ? now + 1000
       : Math.min(
+          ...searches.map((s) => s.expires).filter((t) => t > now),
           ...jobs
             .flatMap((j) => [j.expires, j.payloadExpires])
             .filter((t) => t > now),
@@ -240,12 +256,15 @@ export class ReviewQueue {
   }
   async fetch(request: Request): Promise<Response> {
     try {
-      const { action, user, id, value } = (await request.json()) as {
-        action: string;
-        user: Identity;
-        id?: string;
-        value?: Submission;
-      };
+      const { action, user, id, value, query, paper } =
+        (await request.json()) as {
+          action: string;
+          user: Identity;
+          id?: string;
+          value?: Submission;
+          query?: string;
+          paper?: PaperCandidate;
+        };
       // This object is reachable only through the authenticated Worker binding.
       if (
         !user ||
@@ -261,6 +280,155 @@ export class ReviewQueue {
             .filter((j) => j.owner === user.id && j.expires > Date.now())
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
             .map(summary),
+        });
+      }
+      if (action === "paper-search") {
+        if (
+          !user.canWrite ||
+          typeof query !== "string" ||
+          query.trim().length < 3 ||
+          query.length > 250
+        )
+          throw new HttpError(400, "请填写 3–250 字的完整论文标题。");
+        const key = [
+          ...new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(query.trim().toLowerCase()),
+            ),
+          ),
+        ]
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        let cached = await this.readEncrypted<{
+          expires: number;
+          result: Awaited<ReturnType<typeof lookupPapers>>;
+        }>(`lookup:${key}`);
+        if (!cached || cached.expires < Date.now()) {
+          const reservation = await this.state.blockConcurrencyWhile(
+            async () => {
+              try {
+                const day = `search-usage:${new Date().toISOString().slice(0, 10)}`,
+                  usage = (await this.state.storage.get<Usage>(day)) || {
+                    total: 0,
+                    members: {},
+                  };
+                if (
+                  usage.total >= 200 ||
+                  (usage.members[String(user.id)] || 0) >= 30
+                )
+                  throw new HttpError(
+                    429,
+                    "今日论文检索次数已用完，请明天再试。",
+                  );
+                const last =
+                  (await this.state.storage.get<number>("last-paper-search")) ||
+                  0;
+                if (Date.now() - last < 3000)
+                  throw new HttpError(429, "检索较频繁，请稍等 3 秒后重试。");
+                usage.total++;
+                usage.members[String(user.id)] =
+                  (usage.members[String(user.id)] || 0) + 1;
+                await this.state.storage.put({
+                  [day]: usage,
+                  "last-paper-search": Date.now(),
+                });
+                return { ok: true };
+              } catch (error) {
+                return { error };
+              }
+            },
+          );
+          if ("error" in reservation) throw reservation.error;
+          const result = await this.deps.lookup(query.trim(), this.env);
+          cached = { expires: Date.now() + 20 * 60_000, result };
+          await this.writeEncrypted(`lookup:${key}`, cached);
+          await this.state.storage.put(`search:${key}`, {
+            expires: Date.now() + DAY,
+          });
+          const alarm = await this.state.storage.getAlarm();
+          if (alarm === null || alarm > Date.now() + DAY)
+            await this.state.storage.setAlarm(Date.now() + DAY);
+        }
+        const candidates = await Promise.all(
+          cached.result.candidates.map(async (candidate) => ({
+            ...candidate,
+            token: await seal(
+              { candidate, owner: user.id, expires: Date.now() + 30 * 60_000 },
+              this.env.SESSION_SECRET,
+            ),
+          })),
+        );
+        return json({ ...cached.result, candidates });
+      }
+      if (action === "paper-submit") {
+        if (!user.canWrite || !paper)
+          throw new HttpError(403, "没有收录权限。");
+        return await this.state.blockConcurrencyWhile(async () => {
+          try {
+            const pid = await paperId(paper),
+              hash = [
+                ...new Uint8Array(
+                  await crypto.subtle.digest(
+                    "SHA-256",
+                    new TextEncoder().encode(`${user.id}:collect:${pid}`),
+                  ),
+                ),
+              ]
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("")
+                .slice(0, 48),
+              jobId = `review-${hash}`;
+            const previous = await this.state.storage.get<Job>(`job:${jobId}`);
+            if (previous && previous.expires > Date.now()) {
+              await this.schedule();
+              return json(
+                { job: summary(previous) },
+                reviewPending(previous.status) ? 202 : 200,
+              );
+            }
+            const usage = await this.countSubmission(user),
+              now = Date.now();
+            const job: Job = {
+              id: jobId,
+              owner: user.id,
+              kind: "paper",
+              noteId: pid,
+              title: paper.title,
+              status: "queued",
+              createdAt: new Date(now).toISOString(),
+              updatedAt: new Date(now).toISOString(),
+              payloadExpires: now + DAY,
+              expires: now + 7 * DAY,
+              issues: [],
+              message: "",
+              approved: false,
+            };
+            await this.state.storage.transaction(async (storage) => {
+              await storage.put({
+                [`job:${jobId}`]: job,
+                [usage.key]: usage.usage,
+              });
+              const alarm = await storage.getAlarm();
+              if (alarm === null || alarm > now + 1000)
+                await storage.setAlarm(now + 1000);
+            });
+            await this.writeEncrypted(`payload:${jobId}`, {
+              user,
+              paper,
+            } satisfies Payload);
+            return json({ job: summary(job) }, 202);
+          } catch (error) {
+            return json(
+              {
+                error:
+                  error instanceof HttpError
+                    ? error.message
+                    : "收录暂时不可用。",
+              },
+              error instanceof HttpError ? error.status : 500,
+            );
+          }
         });
       }
       if (action === "submit") {
@@ -293,13 +461,12 @@ export class ReviewQueue {
             : null;
         const candidate =
           payload && (await this.readEncrypted<Note>(`candidate:${job.id}`));
-        const note = payload ? candidate || payload.value.note : null;
-        if (note && payload) {
-          note.revision = payload.value.baseRevision;
+        const note = payload?.value ? candidate || payload.value.note : null;
+        const submission = payload?.value;
+        if (note && submission) {
+          note.revision = submission.baseRevision;
           note.assets = note.assets.map((asset) => {
-            const upload = payload.value.assets.find(
-              (a) => a.path === asset.path,
-            );
+            const upload = submission.assets.find((a) => a.path === asset.path);
             return upload
               ? {
                   ...asset,
@@ -319,7 +486,10 @@ export class ReviewQueue {
                 409,
                 "此任务无需重试；未通过的笔记请修改后重新提交。",
               );
-            if (!user.canWrite || !this.env.DEEPSEEK_API_KEY)
+            if (
+              !user.canWrite ||
+              (!this.env.DEEPSEEK_API_KEY && current.kind !== "paper")
+            )
               throw new HttpError(403, "当前账号不能提交审核。");
             const payload =
               current.payloadExpires > Date.now() &&
@@ -392,6 +562,24 @@ export class ReviewQueue {
           410,
           "审核草稿已到期或不可恢复，请从本机草稿重新提交。",
         );
+      if (payload.paper) {
+        job.status = "reviewing";
+        await persist();
+        const result = await this.deps.collect(
+          this.env,
+          payload.user,
+          payload.paper,
+        );
+        job.noteId = result.paper.id;
+        job.status = "published";
+        job.commitUrl = result.commitUrl;
+        job.message = `${result.reused ? "论文已存在，复用已有条目。" : ""}${result.paper.pdfMessage}`;
+        await persist();
+        await this.deleteEncrypted(`payload:${job.id}`);
+        await this.schedule();
+        return;
+      }
+      if (!payload.value) throw new HttpError(400, "提交内容不完整。");
       if (job.status === "reviewing")
         throw new HttpError(
           503,
@@ -401,7 +589,9 @@ export class ReviewQueue {
       if (!job.approved) {
         job.status = "reviewing";
         await persist();
-        const tags = await this.deps.tags(this.env, payload.user);
+        const tags = payload.value.note.tags.length
+          ? []
+          : await this.deps.tags(this.env, payload.user);
         const outcome = await this.deps.review(
           payload.value.note,
           this.env,
@@ -456,6 +646,18 @@ export class ReviewQueue {
   }
   private async cleanup() {
     const now = Date.now();
+    for (const [key, value] of await this.state.storage.list<{
+      expires: number;
+    }>({ prefix: "search:" }))
+      if (value.expires <= now) {
+        await this.deleteEncrypted(`lookup:${key.slice(7)}`);
+        await this.state.storage.delete(key);
+      }
+    for (const key of (
+      await this.state.storage.list({ prefix: "search-usage:" })
+    ).keys())
+      if (key.slice(13) < new Date(now - DAY).toISOString().slice(0, 10))
+        await this.state.storage.delete(key);
     for (const job of await this.jobs()) {
       if (job.payloadExpires <= now) {
         await this.deleteEncrypted(`payload:${job.id}`);

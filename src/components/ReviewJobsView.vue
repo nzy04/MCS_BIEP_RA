@@ -83,7 +83,15 @@ const fieldLabel = (field: string) =>
               rejected:
                 job.status === 'needs_changes' || job.status === 'failed',
             }"
-            >{{ labels[job.status] }}</span
+            >{{
+              job.kind === "paper"
+                ? reviewPending(job.status)
+                  ? "收录中"
+                  : job.status === "published"
+                    ? "已收录"
+                    : labels[job.status]
+                : labels[job.status]
+            }}</span
           >
         </div>
         <time :datetime="job.createdAt">{{
@@ -118,7 +126,10 @@ const fieldLabel = (field: string) =>
         </div>
         <div class="review-item-actions">
           <button
-            v-if="job.status === 'needs_changes' || job.status === 'failed'"
+            v-if="
+              job.kind !== 'paper' &&
+              (job.status === 'needs_changes' || job.status === 'failed')
+            "
             class="button secondary"
             @click="$emit('edit', job.id)"
           >
@@ -134,7 +145,7 @@ const fieldLabel = (field: string) =>
             class="text-link"
             @click="$emit('open', job.noteId)"
           >
-            阅读笔记</button
+            {{ job.kind === "paper" ? "查看论文" : "阅读笔记" }}</button
           ><a
             v-if="job.commitUrl"
             :href="job.commitUrl"

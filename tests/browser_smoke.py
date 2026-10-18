@@ -35,7 +35,7 @@ with sync_playwright() as p:
     assert '真实导入' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
     assert '结构化章节' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
     assert '我的备注' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
-    page.locator('.metadata-panel > summary').click();page.get_by_label('分享人',exact=True).fill('验收成员');page.get_by_label('方向标签',exact=True).fill('导入验收，世界模型')
+    page.locator('.metadata-panel > summary').click();page.get_by_label('分享人',exact=True).fill('验收成员');page.get_by_role('button',name='新建研究方向',exact=True).click();page.get_by_label('新研究方向',exact=True).fill('导入验收');page.get_by_role('button',name='创建方向',exact=True).click();page.get_by_role('checkbox',name='世界模型',exact=True).check()
     page.get_by_role('button',name='预览',exact=True).click();assert page.locator('.source-panel .note-body img').count()==1
     assert page.locator('.source-panel .note-body img').first.evaluate('(img)=>img.complete && img.naturalWidth>0')
     page.screenshot(path=str(out/'desktop-editor.png'),full_page=False)
@@ -50,6 +50,7 @@ with sync_playwright() as p:
         if path=='config': route.fulfill(json={'title':'MCS_BIEP','configured':True,'authConfigured':True,'repository':'test-group/test-repo','branch':'main'})
         elif path=='session': route.fulfill(json={'login':'test-member','name':'测试成员','avatar':'','canWrite':True})
         elif path=='library': route.fulfill(json={'notes':[]})
+        elif path=='directions': route.fulfill(json={'directions':[]})
         elif path=='publish':
             expired['value']=True
             route.fulfill(status=401,json={'error':'请先登录 GitHub，再发布笔记。'})

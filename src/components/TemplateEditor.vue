@@ -4,6 +4,7 @@ import { structureText, type Note, type NoteAsset } from "../../shared/note";
 import { noteBody } from "../../shared/document";
 import PaperMetadataEditor from "./PaperMetadataEditor.vue";
 import NoteBodyEditor from "./NoteBodyEditor.vue";
+import DirectionPicker from "./DirectionPicker.vue";
 const note = defineModel<Note>({ required: true });
 
 defineProps<{
@@ -11,6 +12,9 @@ defineProps<{
   assetBase: string;
   paperFile: File | null;
   addImage: (file: File) => Promise<NoteAsset | null>;
+  directions: string[];
+  canCreateDirection: boolean;
+  createDirection: (name: string) => Promise<string>;
 }>();
 defineEmits<{ removeAsset: [path: string] }>();
 const metadataOpen = shallowRef(!note.value.title);
@@ -31,6 +35,12 @@ const body = computed({
         placeholder="论文标题或阅读主题"
         required
     /></label>
+    <DirectionPicker
+      v-model="note.tags"
+      :options="directions"
+      :can-create="canCreateDirection"
+      :create="createDirection"
+    />
     <details
       :open="metadataOpen"
       class="metadata-panel"
