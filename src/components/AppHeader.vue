@@ -27,14 +27,7 @@ defineEmits<{
           :href="`https://github.com/${config.repository}`"
           target="_blank"
           rel="noopener"
-          >GitHub 仓库</a
-        >
-        <a
-          v-if="config.repository"
-          :href="`https://github.com/${config.repository}#readme`"
-          target="_blank"
-          rel="noopener"
-          >使用说明</a
+          >转到 GitHub</a
         >
       </nav>
       <div class="header-actions">

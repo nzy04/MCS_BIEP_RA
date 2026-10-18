@@ -1266,9 +1266,6 @@ p {
   }
 }
 @media (max-width: 950px) {
-  .primary-nav a:last-child {
-    display: none;
-  }
   .header-inner {
     gap: 22px;
   }
@@ -1332,9 +1329,6 @@ p {
     width: 100%;
     height: 32px;
     gap: 22px;
-  }
-  .primary-nav a:last-child {
-    display: flex;
   }
   .header-actions {
     gap: 4px;
