@@ -127,13 +127,10 @@ function download() {
     </button>
     <div class="workspace-heading">
       <div>
-        <div class="eyebrow">CONTRIBUTE A READING NOTE</div>
         <h1>
-          {{ existing ? "继续编辑这篇笔记" : "把你的阅读，分享给大家。" }}
+          {{ existing ? "编辑笔记" : "上传与整理笔记" }}
         </h1>
-        <p>上传已有笔记，确认整理结果，再发布到共同的论文库。</p>
       </div>
-      <span class="private-pill">确认发布前，文件在你的浏览器中处理</span>
     </div>
     <ol class="stepper">
       <li
@@ -159,9 +156,7 @@ function download() {
       </div>
       <div class="upload-columns">
         <section class="upload-panel">
-          <div class="panel-number">01 / YOUR NOTES</div>
-          <h2>上传你的阅读笔记</h2>
-          <p>Word、PDF、Markdown 或纯文本都可以。</p>
+          <h2>笔记文件</h2>
           <label
             class="dropzone"
             :class="{ busy }"
@@ -179,20 +174,18 @@ function download() {
                 ? "正在提取文件内容…"
                 : noteFile
                   ? noteFile.name
-                  : "点击选择，或把文件拖到这里"
+                  : "选择或拖入文件"
             }}</strong
             ><span>PDF / DOCX / MD / TXT · 最大 15 MB</span
             ><small v-if="noteFile"
               ><Check :size="13" />已解析，可继续整理</small
             ></label
           ><button class="text-link manual-note" @click="step = 2">
-            <Plus :size="15" />也可以直接开始写笔记
+            <Plus :size="15" />在线写笔记
           </button>
         </section>
         <section class="upload-panel optional-panel">
-          <div class="panel-number">02 / PAPER · OPTIONAL</div>
-          <h2>附上论文原文 <span>可选</span></h2>
-          <p>阅读笔记和论文原文会分开处理，方便对照。</p>
+          <h2>论文 PDF <span>可选</span></h2>
           <label class="paper-upload"
             ><input
               data-testid="paper-file"
@@ -202,16 +195,10 @@ function download() {
               @change="changed($event, 'paper')" /><BookOpen :size="25" />
             <div>
               <strong>{{ paperFile ? paperFile.name : "选择论文 PDF" }}</strong
-              ><span>也可以在下一步填写论文链接</span>
+              ><span>或在模板中填写论文链接</span>
             </div>
             <Plus :size="19"
           /></label>
-          <div class="quiet-info">
-            <span>如何整理？</span>
-            <p>
-              已有章节会对应到统一模板；没有匹配的内容会保留，不会自动编写你的个人思考。
-            </p>
-          </div>
         </section>
       </div>
       <div v-if="warnings.length" class="parse-notices">
@@ -220,8 +207,7 @@ function download() {
         </p>
       </div>
       <div class="workspace-actions">
-        <span>文件只在本机解析，发布后才写入仓库。</span
-        ><button
+        <button
           class="button primary"
           :disabled="!canContinue || busy"
           @click="next"
@@ -233,8 +219,8 @@ function download() {
       ><div class="editor-columns">
         <section class="editor-panel">
           <div class="panel-heading">
-            <h2>整理你的笔记</h2>
-            <span>{{ draftSaved || "修改会自动保存到本机" }}</span>
+            <h2>笔记模板</h2>
+            <span>{{ draftSaved || "自动保存草稿" }}</span>
           </div>
           <TemplateEditor v-model="draft" @image="addImage" />
         </section>
@@ -258,10 +244,7 @@ function download() {
             </button>
           </div>
           <div v-if="sourceTab === 'note'" class="original-text">
-            {{
-              originalText ||
-              "你正在直接编写笔记，或编辑已有笔记。这里会展示新导入文档的原始文字。"
-            }}
+            {{ originalText || "暂无原文" }}
           </div>
           <template v-else-if="sourceTab === 'paper'"
             ><iframe
@@ -270,9 +253,7 @@ function download() {
               title="论文原文预览"
               class="pdf-frame"
             ></iframe>
-            <div v-else class="original-text">
-              尚未附加论文 PDF。可以返回导入步骤添加，或在左侧填写官方论文链接。
-            </div></template
+            <div v-else class="original-text">未添加 PDF</div></template
           ><NotePreview v-else :note="draft" :asset-base="assetBase" />
         </aside>
       </div>
@@ -294,14 +275,10 @@ function download() {
           <NotePreview :note="draft" :asset-base="assetBase" />
         </section>
         <aside class="publish-panel">
-          <div class="panel-number">READY TO SHARE</div>
-          <h2>确认这篇阅读记录</h2>
-          <p>确认内容与署名准确，笔记中的图片都已正确显示。</p>
+          <h2>发布笔记</h2>
           <label v-if="paperFile" class="checkbox-field"
-            ><input v-model="retainPdf" type="checkbox" />同时保存论文 PDF
-            到仓库或本机<span
-              >原文会占用存储空间；也可只保留官方链接。</span
-            ></label
+            ><input v-model="retainPdf" type="checkbox" />保存 PDF 附件（≤4
+            MB）</label
           >
           <div class="destination">
             <Github :size="20" />
@@ -311,10 +288,10 @@ function download() {
               }}</strong
               ><span>{{
                 remote
-                  ? "将创建一次 GitHub 提交"
+                  ? "公开可见"
                   : config.configured
-                    ? "登录并获得写权限后可发布"
-                    : "GitHub 尚未连接，本次不会上传"
+                    ? "登录后可发布到仓库"
+                    : "仅本机保存"
               }}</span>
             </div>
           </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, CheckCircle2, AlertCircle, BookOpen } from "lucide-vue-next";
+import { X, CheckCircle2, AlertCircle } from "lucide-vue-next";
 import { useWorkspace } from "./composables/useWorkspace";
 import AppHeader from "./components/AppHeader.vue";
 import LibraryView from "./components/LibraryView.vue";
@@ -45,12 +45,6 @@ const app = useWorkspace();
     @edit="app.beginImport"
   />
   <div v-else class="page-container empty-state">正在读取笔记…</div>
-  <footer class="app-footer page-container">
-    <span
-      ><BookOpen :size="14" />{{ app.configuration.value.title }} ·
-      共同阅读，持续积累。</span
-    ><span>Built for a curious research group.</span>
-  </footer>
   <SetupDialog
     v-if="app.setupOpen.value"
     @close="app.setupOpen.value = false"

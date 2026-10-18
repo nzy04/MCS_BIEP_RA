@@ -47,8 +47,7 @@ function download() {
         <NotePreview :note="note" :asset-base="assetBase" />
       </section>
       <aside class="reader-aside">
-        <div class="eyebrow">PAPER RESOURCES</div>
-        <h3>继续阅读</h3>
+        <h3>论文资源</h3>
         <a
           v-if="note.paperUrl"
           class="resource-link"
@@ -77,7 +76,6 @@ function download() {
           <span>最后更新</span><strong>{{ note.updatedAt.slice(0, 10) }}</strong
           ><span>阅读深度</span><strong>{{ note.readingDepth }}</strong>
         </div>
-        <p class="reader-footnote">好的笔记，也可以保留尚未解决的问题。</p>
       </aside>
     </div>
   </main>

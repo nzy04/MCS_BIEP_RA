@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, Plus, Github, ArrowUpRight, LogOut } from "lucide-vue-next";
+import { BookOpen, Plus, Github, LogOut } from "lucide-vue-next";
 import type { Session, SiteConfig } from "../../shared/note";
 defineProps<{ config: SiteConfig; user: Session | null; view: string }>();
 defineEmits<{
@@ -14,8 +14,7 @@ defineEmits<{
   <header class="app-header">
     <div class="header-inner">
       <a href="#" class="brand" @click.prevent="$emit('navigate', 'library')"
-        ><span class="brand-mark"><BookOpen :size="23" /></span
-        ><span>{{ config.title }}<small>PAPER COMMONS</small></span></a
+        ><BookOpen :size="23" /><span>{{ config.title }}</span></a
       >
       <nav class="primary-nav" aria-label="主导航">
         <a
@@ -24,17 +23,19 @@ defineEmits<{
           @click.prevent="$emit('navigate', 'library')"
           >论文库</a
         ><a
-          href="#import"
-          :class="{ active: view === 'import' }"
-          @click.prevent="$emit('create')"
-          >贡献笔记</a
-        ><a
           v-if="config.repository"
           :href="`https://github.com/${config.repository}`"
           target="_blank"
           rel="noopener"
-          >GitHub <ArrowUpRight :size="13"
-        /></a>
+          >GitHub 仓库</a
+        >
+        <a
+          v-if="config.repository"
+          :href="`https://github.com/${config.repository}#readme`"
+          target="_blank"
+          rel="noopener"
+          >使用说明</a
+        >
       </nav>
       <div class="header-actions">
         <span v-if="!config.configured" class="demo-badge">本地体验版</span

@@ -8,15 +8,14 @@ const safeHtml = computed(() => renderedNote(props.note, props.assetBase));
 </script>
 <template>
   <article class="note-preview">
-    <div class="preview-kicker">
-      {{ note.venue || "阅读笔记" }}
+    <div v-if="note.venue || note.year" class="preview-kicker">
+      {{ note.venue }}
       <span v-if="note.year">/ {{ note.year }}</span>
     </div>
     <h1>{{ note.title || "还没有填写标题" }}</h1>
     <p v-if="note.subtitle" class="note-subtitle">{{ note.subtitle }}</p>
     <div class="note-meta">
-      <span class="avatar-initial">{{ note.author.slice(0, 1) || "M" }}</span
-      ><span>{{ note.author || "尚未填写分享人" }}</span
+      <span>{{ note.author || "尚未填写分享人" }}</span
       ><span>·</span><span>{{ note.readingDepth }}</span
       ><span v-for="tag in note.tags" :key="tag" class="tag">{{ tag }}</span>
     </div>

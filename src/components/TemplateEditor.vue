@@ -18,15 +18,13 @@ const tags = computed({
   <div class="template-editor">
     <div class="editor-section-label">基本信息</div>
     <label class="field"
-      >笔记标题 <span>*</span
-      ><input
+      >笔记标题<input
         v-model="note.title"
-        placeholder="论文标题，或你的阅读主题"
+        required
+        placeholder="论文标题或阅读主题"
         maxlength="250" /></label
     ><label class="field"
-      >中文说明<input
-        v-model="note.subtitle"
-        placeholder="用一句话说明这篇论文与你的研究有什么关系"
+      >中文说明<input v-model="note.subtitle" placeholder="中文标题或简述"
     /></label>
     <div class="field-grid">
       <label class="field"
@@ -78,9 +76,6 @@ const tags = computed({
           "
       /></label>
     </div>
-    <p class="field-hint">
-      支持 Markdown。没有写到的部分可以留空；其他原始内容会完整保留。
-    </p>
     <label
       v-for="section in sectionDefinitions"
       :key="section.key"
@@ -89,11 +84,7 @@ const tags = computed({
       }}<textarea
         v-model="note.sections[section.key]"
         :rows="section.key === 'original' ? 8 : 4"
-        :placeholder="
-          section.key === 'original'
-            ? '尚未归入模板的笔记会出现在这里，可保留或移动到上方章节。'
-            : '写下你已经确认的理解、证据或问题…'
-        "
+        :placeholder="section.key === 'original' ? '未分类的原始内容' : ''"
       />
     </label>
   </div>
