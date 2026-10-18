@@ -1,4 +1,4 @@
-import sys, json, pathlib
+import sys, json, pathlib, os
 sys.path.insert(0, str(pathlib.Path('test-results/python-deps').resolve()))
 from playwright.sync_api import sync_playwright
 from docx import Document
@@ -16,11 +16,12 @@ pdf=canvas.Canvas(str(out/'sample.pdf'));pdf.drawString(60,770,'PDF import verif
 scan=canvas.Canvas(str(out/'scan.pdf'));scan.rect(40,40,200,200,fill=1);scan.save()
 (out/'sample.md').write_text('# Markdown 验收\n\n## 研究背景\n保留背景内容。\n\n## 我的思考\n测试输入 <script>alert(1)</script> 不应执行。',encoding='utf-8')
 results=[]
+base_url=os.environ.get('TEST_BASE_URL','http://127.0.0.1:5188/')
 with sync_playwright() as p:
     browser=p.chromium.launch(channel='msedge',headless=True)
     ctx=browser.new_context(viewport={'width':1440,'height':1100},device_scale_factor=1)
     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    page.goto('http://127.0.0.1:5188/');page.wait_for_load_state('networkidle');page.locator('.paper-card').first.wait_for()
+    page.goto(base_url);page.wait_for_load_state('networkidle');page.locator('.paper-card').first.wait_for()
     assert page.locator('.paper-card').count()==3
     page.screenshot(path=str(out/'desktop-library.png'),full_page=True)
     page.get_by_role('textbox',name='搜索论文').fill('SOTOPIA');assert page.locator('.paper-card').count()==1
@@ -39,7 +40,7 @@ with sync_playwright() as p:
     page.get_by_role('button',name='返回论文库',exact=True).click();assert page.locator('.paper-card').count()==4
     page.get_by_role('button',name='上传笔记',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'sample.pdf'));page.get_by_text('已解析，可继续整理').wait_for(timeout=45000);page.get_by_role('button',name='继续整理',exact=True).click();assert 'importer must preserve' in page.get_by_label('其他原始笔记',exact=True).input_value();assert '中文笔记也应当正确提取' in page.get_by_label('其他原始笔记',exact=True).input_value();results.append('PDF: actual English and Chinese text extraction passed')
     page.get_by_role('button',name='返回导入',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'scan.pdf'));page.get_by_role('alert').wait_for();assert '扫描件' in page.get_by_role('alert').inner_text();results.append('scan-only PDF rejected with clear OCR limitation')
-    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile=mobile_context.new_page();mobile.goto('http://127.0.0.1:5188/');mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
+    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile=mobile_context.new_page();mobile.goto(base_url);mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
     assert not errors, errors
     results.append('no browser runtime errors')
     browser.close()
