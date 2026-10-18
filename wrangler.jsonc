@@ -24,9 +24,6 @@
     "DEEPSEEK_MODEL": "deepseek-flash",
     "REVIEW_DAILY_LIMIT": "50",
     "REVIEW_USER_DAILY_LIMIT": "10",
-    "GITHUB_OWNER": "nzy04",
-    "GITHUB_REPO": "MCS_BIEP_RA",
     "GITHUB_BRANCH": "main",
-    "GITHUB_CLIENT_ID": "Iv23liUekDd6CZVIiGPn",
   },
 }

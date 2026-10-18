@@ -1,33 +1,34 @@
-# MCS_BIEP
+# Paper Commons
 
-论文与阅读笔记归档，支持在线检索、文件导入、编辑与发布。
+论文与阅读笔记管理网站，支持 GitHub 登录、文件导入、图文编辑、协作笔记和审核发布。
 
-**网站：** [MCS_BIEP 论文库](https://mcs-biep-ra.zn77710.workers.dev)
+## 使用
 
-## 使用方法
+- 公开阅读无需登录；上传和修改需要仓库写权限。
+- 同一论文可保留多人的独立笔记，可按作者切换阅读。
+- 支持 DOCX、文字型 PDF、Markdown、TXT 和 ZIP 笔记包；正文可编辑图片和表格。
+- 笔记提交后在「我的提交」查看审核结果，通过后公开归档。
+- 详细操作见网站「使用指南」。
 
-1. **阅读**：打开网站，搜索标题、作者或标签，点击「阅读笔记」。
-2. **发布**：使用 GitHub 登录，点击「上传笔记」，导入文件或在线撰写；预览并确认后，在「我的提交」查看审核结果，通过后自动归档。
-3. **修改**：打开笔记，点击「编辑笔记」，修改后重新发布；「导出笔记包」可下载 Markdown 和附件。
+## 本地运行
 
-阅读无需登录。发布与修改需要仓库写权限，发布内容公开可见。
+需要 Node.js 24 和 pnpm。
 
-同一篇论文支持多人的独立笔记，列表和阅读页都可按作者选择；「添加我的笔记」会新建自己的笔记，不影响他人内容。
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
+```
 
-登录后点击右上角名字旁的铅笔设置昵称，留空使用 GitHub 名称。修改昵称会同步更新该账号以前上传的笔记署名，GitHub 原账号仍会显示。账号资料保存在 `data/authors/`，昵称可以重复，笔记归属按 GitHub 身份区分。
+启动接口服务前，将 `.dev.vars.example` 复制为 `.dev.vars` 并填写配置，然后运行 `pnpm worker:dev`。没有配置远端仓库时，可使用本地体验模式。
 
-## 文件要求
+## 部署
 
-- 支持 DOCX、文字型 PDF、Markdown、TXT 和 ZIP 笔记包；单文件导入上限 15 MB，PDF 最多 100 页。
-- 正文保留原有章节，可直接编辑文字、图片和表格。Markdown 与配套图片可一起选择；Word 中的图片和表格随正文导入。
-- 论文 PDF 可单独附上，并通过「PDF 选页插图」将指定页面插入正文。
-- 扫描 PDF 需先完成 OCR，旧版 Word 文件需转换为 DOCX。
-- 发布附件：单张图片不超过 2 MB，PDF 不超过 4 MB，附件总计不超过 6 MB。
+在服务端配置 `GITHUB_OWNER`、`GITHUB_REPO`、`GITHUB_CLIENT_ID`，并将 `GITHUB_CLIENT_SECRET`、`SESSION_SECRET`、`DEEPSEEK_API_KEY` 保存为 Secret。GitHub App 需要目标仓库的 Contents 读写权限，登录回调为网站域名下的 `/api/auth/callback`。`SESSION_SECRET` 至少使用 32 个随机字符。
 
-## 数据与维护
+```sh
+pnpm test
+pnpm build
+pnpm exec wrangler deploy
+```
 
-笔记数据位于 `data/`，Markdown 阅读版位于 `papers/`，附件位于 `assets/uploads/`。请通过网站编辑，保持数据与阅读版同步。
-
-部署配置见 [部署与授权配置](docs/部署与授权配置.md)。
-
-图文导入与维护见 [图文笔记](docs/图文笔记.md)，撰写可参考 [笔记模板](templates/阅读笔记.md)。章节按论文内容增删，无需逐项填写。
+部署环境中的配置通过 `keep_vars` 保留，凭据和个人部署地址不写入源码。笔记位于 `data/`，阅读版位于 `papers/`，附件位于 `assets/uploads/`；请通过网站维护这些内容。

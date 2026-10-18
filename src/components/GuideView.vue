@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import guide from "../../docs/使用指南.md?raw";
+import guide from "../content/guide.md?raw";
 import { renderedMarkdown } from "../services/markdown";
 
 const safeHtml = renderedMarkdown(guide);
