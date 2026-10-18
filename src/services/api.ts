@@ -1,4 +1,13 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -8,7 +17,10 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     .json()
     .catch(() => ({ error: "服务暂时不可用，请稍后重试。" }));
   if (!response.ok)
-    throw new Error(body.error || `请求失败 (${response.status})`);
+    throw new ApiError(
+      response.status,
+      body.error || `请求失败 (${response.status})`,
+    );
   return body;
 }
 export async function config(): Promise<SiteConfig> {

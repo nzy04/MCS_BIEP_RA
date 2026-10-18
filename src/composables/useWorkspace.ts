@@ -89,7 +89,15 @@ export function useWorkspace() {
   }
   async function save(note: Note, toRepository: boolean, baseRevision: string) {
     if (toRepository) {
-      const result = await api.publishNote(note, baseRevision);
+      let result: Awaited<ReturnType<typeof api.publishNote>>;
+      try {
+        result = await api.publishNote(note, baseRevision);
+      } catch (error) {
+        if (error instanceof api.ApiError && error.status === 401) {
+          user.value = null;
+        }
+        throw error;
+      }
       await removeLocalNote(note.id);
       selectedNote.value = result.note;
       await refresh();

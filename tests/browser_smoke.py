@@ -17,9 +17,12 @@ scan=canvas.Canvas(str(out/'scan.pdf'));scan.rect(40,40,200,200,fill=1);scan.sav
 (out/'sample.md').write_text('# Markdown 验收\n\n## 研究背景\n保留背景内容。\n\n## 我的思考\n测试输入 <script>alert(1)</script> 不应执行。',encoding='utf-8')
 results=[]
 base_url=os.environ.get('TEST_BASE_URL','http://127.0.0.1:5188/')
+def demo_config(route):
+    route.fulfill(json={'title':'MCS_BIEP','configured':False,'authConfigured':False,'repository':'','branch':'main'})
 with sync_playwright() as p:
     browser=p.chromium.launch(channel='msedge',headless=True)
     ctx=browser.new_context(viewport={'width':1440,'height':1100},device_scale_factor=1)
+    ctx.route('**/api/config',demo_config)
     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto(base_url);page.wait_for_load_state('networkidle');page.locator('.paper-card').first.wait_for()
     assert page.locator('.paper-card').count()==3
@@ -40,7 +43,19 @@ with sync_playwright() as p:
     page.get_by_role('button',name='返回论文库',exact=True).click();assert page.locator('.paper-card').count()==4
     page.get_by_role('button',name='上传笔记',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'sample.pdf'));page.get_by_text('已解析，可继续整理').wait_for(timeout=45000);page.get_by_role('button',name='继续整理',exact=True).click();assert 'importer must preserve' in page.get_by_label('其他原始笔记',exact=True).input_value();assert '中文笔记也应当正确提取' in page.get_by_label('其他原始笔记',exact=True).input_value();results.append('PDF: actual English and Chinese text extraction passed')
     page.get_by_role('button',name='返回导入',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'scan.pdf'));page.get_by_role('alert').wait_for();assert '扫描件' in page.get_by_role('alert').inner_text();results.append('scan-only PDF rejected with clear OCR limitation')
-    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile=mobile_context.new_page();mobile.goto(base_url);mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
+    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile_context.route('**/api/config',demo_config);mobile=mobile_context.new_page();mobile.goto(base_url);mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
+    auth_context=browser.new_context();expired={'value':False}
+    def auth_fixture(route):
+        path=route.request.url.split('/api/',1)[1]
+        if path=='config': route.fulfill(json={'title':'MCS_BIEP','configured':True,'authConfigured':True,'repository':'test-group/test-repo','branch':'main'})
+        elif path=='session': route.fulfill(json=None if expired['value'] else {'login':'test-member','name':'测试成员','avatar':'','canWrite':True})
+        elif path=='library': route.fulfill(json={'notes':[]})
+        elif path=='publish':
+            expired['value']=True
+            route.fulfill(status=401,json={'error':'请先登录 GitHub，再发布笔记。'})
+        else: route.fulfill(status=404,json={'error':'Test endpoint not configured'})
+    auth_context.route('**/api/**',auth_fixture)
+    auth_page=auth_context.new_page();auth_page.goto(base_url);auth_page.wait_for_load_state('networkidle');auth_page.get_by_role('button',name='上传笔记',exact=True).click();auth_page.get_by_role('button',name='也可以直接开始写笔记',exact=True).click();auth_page.get_by_label('笔记标题').fill('会话失效后保留的草稿');auth_page.get_by_label('一句话总结',exact=True).fill('服务端拒绝登录后，应显示重新登录入口并保留草稿。');auth_page.get_by_role('button',name='查看发布预览',exact=True).click();auth_page.get_by_role('button',name='确认发布到仓库',exact=True).click();auth_page.get_by_role('alert').filter(has_text='请先登录 GitHub').wait_for();assert auth_page.get_by_role('button',name='退出登录',exact=True).count()==0;assert auth_page.get_by_role('button',name='登录 GitHub',exact=True).is_visible();auth_page.wait_for_timeout(800);auth_page.reload();auth_page.get_by_role('button',name='恢复继续编辑',exact=True).click();assert auth_page.get_by_label('笔记标题').input_value()=='会话失效后保留的草稿';results.append('expired session: stale identity cleared, login offered and draft recovered')
     assert not errors, errors
     results.append('no browser runtime errors')
     browser.close()
