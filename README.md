@@ -69,4 +69,3 @@ pnpm exec wrangler deploy --dry-run
 Python 浏览器验收脚本为 `tests/browser_smoke.py`，使用 Playwright、python-docx 和 reportlab 生成测试文件，验证实际导入、编辑、本机保存和手机布局。测试产物不入库。
 
 GitHub 登录回调与真实仓库提交仍需在完成部署配置后端到端验收。接口单元测试使用模拟 GitHub 响应，不代表已经完成真实账号发布。
-

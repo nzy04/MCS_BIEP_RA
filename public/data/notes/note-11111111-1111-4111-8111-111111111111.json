@@ -1,0 +1,32 @@
+{
+  "id": "note-11111111-1111-4111-8111-111111111111",
+  "title": "World Models",
+  "subtitle": "从表示、记忆到控制：理解世界模型的起点",
+  "year": "2018",
+  "venue": "arXiv",
+  "tags": [
+    "世界模型",
+    "基础阅读"
+  ],
+  "paperUrl": "https://arxiv.org/abs/1803.10122",
+  "codeUrl": "https://worldmodels.github.io/",
+  "author": "示例 · 林同学",
+  "authorLogin": "demo",
+  "createdAt": "2026-10-18T03:00:00Z",
+  "updatedAt": "2026-10-18T03:00:00Z",
+  "revision": "",
+  "excerpt": "将感知、时序表示与控制放在一起，思考智能体如何在内部模型中学习。",
+  "readingDepth": "概览",
+  "demo": true,
+  "sections": {
+    "summary": "将感知、时序表示与控制放在一起，思考智能体如何在内部模型中学习。",
+    "problem": "这份内容用于体验网站阅读流程。正式使用时，请替换为有原文依据的组内笔记。",
+    "method": "",
+    "evidence": "",
+    "limitations": "尚未在本示例中记录具体实验，不据此评价论文效果。",
+    "insights": "阅读时可以先区分表示模型、时序模型与控制器分别承担的职责。",
+    "original": ""
+  },
+  "assets": [],
+  "sourceNames": []
+}
