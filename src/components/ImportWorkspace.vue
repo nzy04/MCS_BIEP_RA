@@ -66,7 +66,7 @@ const canContinue = computed(
 );
 onMounted(async () => {
   hasDraft.value = !!(await getRecord("draft"));
-  if (!draft.value.author && props.user)
+  if (!hasDraft.value && !draft.value.author && props.user)
     draft.value.author = props.user.name || props.user.login;
 });
 function changed(event: Event, role: "note" | "paper") {

@@ -48,14 +48,14 @@ with sync_playwright() as p:
     def auth_fixture(route):
         path=route.request.url.split('/api/',1)[1]
         if path=='config': route.fulfill(json={'title':'MCS_BIEP','configured':True,'authConfigured':True,'repository':'test-group/test-repo','branch':'main'})
-        elif path=='session': route.fulfill(json=None if expired['value'] else {'login':'test-member','name':'测试成员','avatar':'','canWrite':True})
+        elif path=='session': route.fulfill(json={'login':'test-member','name':'测试成员','avatar':'','canWrite':True})
         elif path=='library': route.fulfill(json={'notes':[]})
         elif path=='publish':
             expired['value']=True
             route.fulfill(status=401,json={'error':'请先登录 GitHub，再发布笔记。'})
         else: route.fulfill(status=404,json={'error':'Test endpoint not configured'})
     auth_context.route('**/api/**',auth_fixture)
-    auth_page=auth_context.new_page();auth_page.goto(base_url);auth_page.wait_for_load_state('networkidle');auth_page.get_by_role('button',name='上传笔记',exact=True).click();auth_page.get_by_role('button',name='也可以直接开始写笔记',exact=True).click();auth_page.get_by_label('笔记标题').fill('会话失效后保留的草稿');auth_page.get_by_label('一句话总结',exact=True).fill('服务端拒绝登录后，应显示重新登录入口并保留草稿。');auth_page.get_by_role('button',name='查看发布预览',exact=True).click();auth_page.get_by_role('button',name='确认发布到仓库',exact=True).click();auth_page.get_by_role('alert').filter(has_text='请先登录 GitHub').wait_for();assert auth_page.get_by_role('button',name='退出登录',exact=True).count()==0;assert auth_page.get_by_role('button',name='登录 GitHub',exact=True).is_visible();auth_page.wait_for_timeout(800);auth_page.reload();auth_page.get_by_role('button',name='恢复继续编辑',exact=True).click();assert auth_page.get_by_label('笔记标题').input_value()=='会话失效后保留的草稿';results.append('expired session: stale identity cleared, login offered and draft recovered')
+    auth_page=auth_context.new_page();auth_page.goto(base_url);auth_page.wait_for_load_state('networkidle');auth_page.get_by_role('button',name='上传笔记',exact=True).click();auth_page.get_by_role('button',name='也可以直接开始写笔记',exact=True).click();auth_page.get_by_label('笔记标题').fill('会话失效后保留的草稿');auth_page.get_by_label('一句话总结',exact=True).fill('服务端拒绝登录后，应显示重新登录入口并保留草稿。');auth_page.get_by_role('button',name='查看发布预览',exact=True).click();auth_page.get_by_role('button',name='确认发布到仓库',exact=True).click();auth_page.get_by_role('alert').filter(has_text='请先登录 GitHub').wait_for();assert auth_page.get_by_role('button',name='退出登录',exact=True).count()==0;assert auth_page.get_by_role('button',name='登录 GitHub',exact=True).is_visible();auth_page.wait_for_timeout(800);auth_page.reload();auth_page.get_by_role('button',name='恢复继续编辑',exact=True).wait_for();auth_page.wait_for_timeout(1000);auth_page.get_by_role('button',name='恢复继续编辑',exact=True).click();assert auth_page.get_by_label('笔记标题').input_value()=='会话失效后保留的草稿';results.append('expired session: stale identity cleared, login offered and signed-in draft recovery preserved after delay')
     assert not errors, errors
     results.append('no browser runtime errors')
     browser.close()
