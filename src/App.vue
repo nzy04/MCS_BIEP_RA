@@ -8,6 +8,7 @@ import PaperReader from "./components/PaperReader.vue";
 import SetupDialog from "./components/SetupDialog.vue";
 import ProfileDialog from "./components/ProfileDialog.vue";
 import ReviewJobsView from "./components/ReviewJobsView.vue";
+import GuideView from "./components/GuideView.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -31,7 +32,7 @@ const app = useWorkspace();
     @create="app.beginImport()"
     @refresh="app.refresh"
     @setup="app.setupOpen.value = true"
-  /><ReviewJobsView
+  /><GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
     v-else-if="app.view.value === 'reviews'"
     :jobs="app.reviews.jobs.value"
     :loading="app.reviews.loading.value"
@@ -69,7 +70,12 @@ const app = useWorkspace();
     v-if="app.setupOpen.value"
     @close="app.setupOpen.value = false"
   />
-  <ProfileDialog v-if="app.profileOpen.value && app.user.value" :user="app.user.value" :save="app.saveProfile" @close="app.profileOpen.value = false" />
+  <ProfileDialog
+    v-if="app.profileOpen.value && app.user.value"
+    :user="app.user.value"
+    :save="app.saveProfile"
+    @close="app.profileOpen.value = false"
+  />
   <div
     v-if="app.message.value"
     class="toast"

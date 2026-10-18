@@ -42,15 +42,26 @@ defineEmits<{
           target="_blank"
           rel="noopener"
           >转到 GitHub</a
+        ><a
+          href="#guide"
+          :class="{ active: view === 'guide' }"
+          @click.prevent="$emit('navigate', 'guide')"
+          >使用指南</a
         >
       </nav>
       <div class="header-actions">
         <span v-if="!config.configured" class="demo-badge">本地体验版</span
         ><template v-if="user"
-          ><button class="account" aria-label="设置昵称" :title="`设置昵称 · @${user.login}`" @click="$emit('profile')"
-            ><img v-if="user.avatar" :src="user.avatar" alt="" /><span class="account-name">{{
-              user.name || user.login
-            }}</span><Pencil :size="12" class="account-pencil" /></button
+          ><button
+            class="account"
+            aria-label="设置昵称"
+            :title="`设置昵称 · @${user.login}`"
+            @click="$emit('profile')"
+          >
+            <img v-if="user.avatar" :src="user.avatar" alt="" /><span
+              class="account-name"
+              >{{ user.name || user.login }}</span
+            ><Pencil :size="12" class="account-pencil" /></button
           ><button
             class="icon-button"
             aria-label="退出登录"
@@ -71,9 +82,19 @@ defineEmits<{
   </header>
 </template>
 <style scoped>
-.account { padding: 0; min-height: 32px; }
-.account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-pencil { flex-shrink: 0; }
+.account {
+  padding: 0;
+  min-height: 32px;
+}
+.account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-pencil {
+  flex-shrink: 0;
+}
 .pending-count {
   margin-left: 6px;
   padding: 1px 5px;

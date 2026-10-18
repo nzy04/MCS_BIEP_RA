@@ -1,24 +1,4 @@
 {
   "version": 1,
-  "notes": [
-    {
-      "id": "note-a3d047b4-7885-4e88-9b1b-3062cb5e4938",
-      "title": "MCS_BIEP 使用指南（上线验收）",
-      "subtitle": "",
-      "year": "",
-      "venue": "",
-      "paperUrl": "",
-      "codeUrl": "",
-      "author": "agdd",
-      "authorLogin": "nzy04",
-      "tags": [
-        "使用指南"
-      ],
-      "readingDepth": "阅读笔记",
-      "createdAt": "2026-10-18T11:14:54.869Z",
-      "updatedAt": "2026-10-18T11:45:18.085Z",
-      "revision": "84532365cfb658997099b4cdb56bde9fb5158cb576f8b8937ce36d6d887dfce0",
-      "excerpt": "这是一篇网站使用指南和上线验收记录，不对应研究论文。组员登录 GitHub 后可上传笔记、确认模板并发布到共同仓库。"
-    }
-  ]
+  "notes": []
 }

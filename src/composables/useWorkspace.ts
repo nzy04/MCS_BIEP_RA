@@ -249,7 +249,10 @@ export function useWorkspace() {
     if (hash.startsWith("paper/")) {
       if (selectedNote.value?.id === hash.slice(6)) view.value = "reader";
       else void openNote(hash.slice(6));
-    } else view.value = ["import", "reviews"].includes(hash) ? hash : "library";
+    } else
+      view.value = ["import", "reviews", "guide"].includes(hash)
+        ? hash
+        : "library";
   }
   onMounted(async () => {
     configuration.value = await api.config();
