@@ -3,6 +3,8 @@
   "name": "mcs-biep-ra",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-18",
+  "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -11,9 +13,9 @@
   },
   "vars": {
     "SITE_TITLE": "MCS_BIEP",
-    "GITHUB_OWNER": "",
+    "GITHUB_OWNER": "nzy04",
     "GITHUB_REPO": "MCS_BIEP_RA",
     "GITHUB_BRANCH": "main",
-    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CLIENT_ID": "Iv23liUekDd6CZVIiGPn",
   },
 }

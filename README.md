@@ -2,6 +2,8 @@
 
 课题组共同维护的论文知识库。成员在网站导入 PDF、Word 或 Markdown，确认并编辑统一模板，再提交到 GitHub 仓库。
 
+在线地址：[MCS_BIEP 论文库](https://mcs-biep-ra.zn77710.workers.dev)。网站已部署到 Cloudflare 免费 Workers；GitHub 登录还需要维护者完成密钥设置。
+
 ## 当前初版
 
 - 论文卡片、方向标签、标题/标签/作者/摘要搜索、移动端阅读。

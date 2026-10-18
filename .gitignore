@@ -4,5 +4,6 @@ dist/
 .dev.vars
 .env
 .env.local
+.setup-session-secret.txt
 test-results/
 *.log
