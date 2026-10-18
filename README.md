@@ -2,7 +2,16 @@
 
 课题组共同维护的论文知识库。成员在网站导入 PDF、Word 或 Markdown，确认并编辑统一模板，再提交到 GitHub 仓库。
 
-在线地址：[MCS_BIEP 论文库](https://mcs-biep-ra.zn77710.workers.dev)。网站已部署到 Cloudflare 免费 Workers；GitHub 登录还需要维护者完成密钥设置。
+在线地址：[MCS_BIEP 论文库](https://mcs-biep-ra.zn77710.workers.dev)。网站已部署到 Cloudflare Workers，GitHub 登录与仓库发布已接通。
+
+## 组员怎么用
+
+1. 维护者在仓库 Settings → Collaborators 邀请组员，组员接受协作邀请。
+2. 打开网站，点击 GitHub 登录，再点击上传笔记。
+3. 导入 DOCX、文字型 PDF、MD 或 TXT，在统一模板中检查、修改理解和备注。
+4. 预览后确认发布到仓库。之后可在网站阅读和编辑，无需使用 Git 命令。
+
+公开阅读无需登录；只有有仓库写权限的账号可以发布。站内保留了一篇明确标注的上线验收使用指南。
 
 ## 当前初版
 
@@ -14,7 +23,7 @@
 - GitHub App 授权接口、加密会话、仓库权限检查和单次多文件提交。
 - 冲突检测与重复提交保护；真实发布成功后返回 GitHub 提交地址。
 
-**真实登录和发布需要完成 GitHub App 与 Cloudflare 配置。** 未配置时，界面明确显示“本地体验版”，保存只发生在当前浏览器，不会模拟上传成功。
+**当前实例已完成 GitHub App 与 Cloudflare Secret 配置。** 复用项目部署到新账号时，按文档重新配置。未配置时，界面明确显示“本地体验版”，保存只发生在当前浏览器，不会模拟上传成功。
 
 ## 本地运行
 
@@ -70,4 +79,6 @@ pnpm exec wrangler deploy --dry-run
 
 Python 浏览器验收脚本为 `tests/browser_smoke.py`，使用 Playwright、python-docx 和 reportlab 生成测试文件，验证实际导入、编辑、本机保存和手机布局。测试产物不入库。
 
-GitHub 登录回调与真实仓库提交仍需在完成部署配置后端到端验收。接口单元测试使用模拟 GitHub 响应，不代表已经完成真实账号发布。
+当前部署已用真实 GitHub 账号验证登录、首次发布、更新同一笔记、退出与公开读取，JSON、Markdown 和索引在同一次提交中更新。详见[上线验收记录](docs/上线验收记录.md)。
+
+Word 图片、中英文 PDF 解析、草稿恢复和手机布局已通过本地浏览器测试；线上文件与附件上传尚待成员用自己的文件验收。接口单元测试使用模拟 GitHub 响应。
