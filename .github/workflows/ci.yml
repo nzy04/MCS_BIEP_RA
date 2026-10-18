@@ -2,6 +2,10 @@ name: Validate initial site
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - data/**
+      - papers/**
+      - assets/uploads/**
   pull_request:
 permissions:
   contents: read

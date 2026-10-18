@@ -510,8 +510,13 @@ export async function commitNote(
   throw new HttpError(409, "仓库正在更新，请稍后重试。你的草稿仍然保留。");
 }
 async function readPublic(env: Env, path: string) {
-  const response = await fetch(
+  const source = new URL(
     `https://raw.githubusercontent.com/${repository(env)}/${env.GITHUB_BRANCH || "main"}/${path}`,
+  );
+  // A member's explicit refresh should not reuse a pre-publication CDN response.
+  source.searchParams.set("v", crypto.randomUUID());
+  const response = await fetch(
+    source.toString(),
     { headers: { "User-Agent": "MCS-BIEP-RA" } },
   );
   if (response.status === 404 && path === "data/library.json")
