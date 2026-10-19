@@ -265,7 +265,7 @@ export function toMarkdown(note: Note, rootPrefix = "../"): string {
   const reviewText = note.review
     ? `\n\n## 参考来源\n\n${note.review.supplements
         .filter((s) => s.value === note[s.field])
-        .map((s) => `- ${s.value} <kbd>AI</kbd>`)
+        .map((s) => `- ${s.value}`)
         .join(
           "\n",
         )}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`

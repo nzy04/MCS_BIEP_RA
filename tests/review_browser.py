@@ -102,7 +102,7 @@ with sync_playwright() as p:
     assert page.locator('.review-receipt').count() == 1
     assert page.get_by_role('link', name='论文 PDF').get_attribute('href') == pdf_url
     page.locator('.review-receipt summary').click()
-    assert page.locator('.reader-aside .ai-badge').count()==1
+    assert page.locator('.ai-badge').count()==0
     assert '自动补充' not in page.locator('.review-receipt').inner_text()
     assert '补充论文来源' not in page.locator('.review-receipt').inner_text()
     page.screenshot(path=str(out / 'pdf-background-result.png'), full_page=True)

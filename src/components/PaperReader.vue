@@ -10,8 +10,6 @@ import { computed } from "vue";
 import type { Note, NoteSummary, Session } from "../../shared/note";
 import { ownsNote } from "../../shared/papers";
 import NotePreview from "./NotePreview.vue";
-import AiBadge from "./AiBadge.vue";
-import { aiSupplement } from "../../shared/ai";
 
 import { exportNotePackage } from "../services/notePackage";
 import { shallowRef } from "vue";
@@ -115,16 +113,14 @@ async function downloadPackage() {
           :href="note.paperUrl"
           target="_blank"
           rel="noopener"
-          ><ExternalLink :size="17" />论文原文
-          <AiBadge v-if="aiSupplement(note, 'paperUrl')" /><span>↗</span></a
+          ><ExternalLink :size="17" />论文原文 <span>↗</span></a
         ><a
           v-if="note.pdfUrl"
           class="resource-link"
           :href="note.pdfUrl"
           target="_blank"
           rel="noopener"
-          ><Download :size="17" />论文 PDF
-          <AiBadge v-if="aiSupplement(note, 'pdfUrl')" /><span>↗</span></a
+          ><Download :size="17" />论文 PDF <span>↗</span></a
         ><a
           v-if="note.codeUrl"
           class="resource-link"

@@ -2,7 +2,6 @@
 import { shallowRef } from "vue";
 import { RefreshCw, FileText, Trash2 } from "lucide-vue-next";
 import { sectionDefinitions } from "../../shared/note";
-import AiBadge from "./AiBadge.vue";
 import {
   reviewPending,
   type ReviewJobSummary,
@@ -118,8 +117,7 @@ const fieldLabel = (field: string) =>
             <li v-for="(item, i) in job.receipt.supplements" :key="i">
               <a :href="item.sourceUrl" target="_blank" rel="noopener">{{
                 item.value
-              }}</a
-              ><AiBadge />
+              }}</a>
             </li>
           </ul>
         </div>

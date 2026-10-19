@@ -3,7 +3,6 @@ import { computed } from "vue";
 import type { PaperGroup } from "../../shared/papers";
 import type { NoteSummary } from "../../shared/note";
 import NoteOptions from "./NoteOptions.vue";
-import AiBadge from "./AiBadge.vue";
 const props = defineProps<{ paper: PaperGroup; canMove?: boolean }>();
 const note = computed(() => props.paper.note);
 defineEmits<{
@@ -27,11 +26,10 @@ defineEmits<{
       <div class="card-top">
         <span v-if="note.venue || note.year" class="venue-label"
           >{{ note.venue
-          }}<AiBadge v-if="note.aiFields?.includes('venue')" /><span
-            v-if="note.year"
-            >{{ note.venue ? " · " : "" }}{{ note.year
-            }}<AiBadge v-if="note.aiFields?.includes('year')" /></span
-        ></span>
+          }}<span v-if="note.year"
+            >{{ note.venue ? " · " : "" }}{{ note.year }}</span
+          ></span
+        >
         <span v-if="note.local" class="local-label">仅本机</span
         ><span v-else-if="note.demo" class="sample-label">示例</span
         ><span v-else class="reading-label">{{ note.readingDepth }}</span>

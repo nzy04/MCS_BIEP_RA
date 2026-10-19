@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Schema } from "@tiptap/pm/model";
 import { reviewDecorations } from "../src/services/reviewHighlights";
-import { aiSupplement } from "../shared/ai";
 import { createNote, toMarkdown } from "../shared/note";
 const schema = new Schema({
   nodes: {
@@ -35,7 +34,7 @@ test("审核原句或章节可定位标红，批注不写入文档内容", () =>
     0,
   );
 });
-test("AI 标记只属于仍与补充值一致的字段，手动改值后消失，导出无冗余补充措辞", () => {
+test("导出保留补充内容和参考来源，不插入 AI 标志或冗余说明", () => {
   const note = createNote();
   note.year = "2018";
   note.review = {
@@ -43,16 +42,18 @@ test("AI 标记只属于仍与补充值一致的字段，手动改值后消失�
     model: "test",
     reviewedAt: "2026-10-19",
     directions: [],
-    sources: [],
+    sources: [
+      { title: "论文原文", url: "https://example.org/paper", kind: "provided" },
+    ],
     supplements: [
       { field: "year", value: "2018", sourceUrl: "https://example.org/paper" },
     ],
   };
-  assert.equal(aiSupplement(note, "year"), true);
-  assert.equal(aiSupplement(note, "paperUrl"), false);
-  assert.ok(toMarkdown(note).includes("<kbd>AI</kbd>"));
+  assert.ok(toMarkdown(note).includes("- 2018"));
+  assert.ok(toMarkdown(note).includes("https://example.org/paper"));
+  assert.ok(!toMarkdown(note).includes("<kbd>AI</kbd>"));
   assert.ok(!toMarkdown(note).includes("自动补充"));
   note.year = "2019";
-  assert.equal(aiSupplement(note, "year"), false);
+  assert.ok(!toMarkdown(note).includes("- 2018"));
   assert.ok(!toMarkdown(note).includes("<kbd>AI</kbd>"));
 });
