@@ -982,7 +982,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     );
     if (
       (path === "/api/reviews" || reviewMatch) &&
-      ["GET", "POST"].includes(request.method)
+      ["GET", "POST", "DELETE"].includes(request.method)
     ) {
       const user = await identity(request, env);
       if (!user)
@@ -991,6 +991,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         requireOrigin(request);
         if (!reviewMatch?.[2]) throw new HttpError(405, "请求方式不支持。");
         await assertWriteAccess(env, user);
+      } else if (request.method === "DELETE") {
+        requireOrigin(request);
+        if (!reviewMatch || reviewMatch[2])
+          throw new HttpError(405, "请求方式不支持。");
       } else if (reviewMatch?.[2]) throw new HttpError(405, "请求方式不支持。");
       return await reviewService(env).fetch(
         new Request(`https://review.internal${path}`, {
@@ -998,11 +1002,13 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action:
-              request.method === "POST"
-                ? "retry"
-                : reviewMatch
-                  ? "detail"
-                  : "list",
+              request.method === "DELETE"
+                ? "delete"
+                : request.method === "POST"
+                  ? "retry"
+                  : reviewMatch
+                    ? "detail"
+                    : "list",
             id: reviewMatch?.[1],
             user,
           }),

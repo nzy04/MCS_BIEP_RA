@@ -1,7 +1,7 @@
 import { onUnmounted, shallowRef, watch, type Ref } from "vue";
 import type { Session } from "../../shared/note";
 import { reviewPending, type ReviewJobSummary } from "../../shared/review";
-import { ApiError, reviewJobs } from "../services/api";
+import { ApiError, deleteReview, reviewJobs } from "../services/api";
 import { removeRecord } from "../services/storage";
 export function useReviewJobs(
   user: Ref<Session | null>,
@@ -10,7 +10,9 @@ export function useReviewJobs(
 ) {
   const jobs = shallowRef<ReviewJobSummary[]>([]),
     loading = shallowRef(false),
+    removing = shallowRef(""),
     error = shallowRef("");
+  const removedIds = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined,
     generation = 0,
     inFlight = false,
@@ -33,7 +35,9 @@ export function useReviewJobs(
     inFlight = true;
     loading.value = true;
     try {
-      const next = await reviewJobs();
+      const next = (await reviewJobs()).filter(
+        (job) => !removedIds.has(job.id),
+      );
       if (epoch !== generation || disposed) return;
       const completed = next.filter(
         (job) =>
@@ -42,7 +46,7 @@ export function useReviewJobs(
       );
       for (const job of completed)
         await removeRecord(`review-draft:${job.id}`).catch(() => {});
-      jobs.value = next;
+      jobs.value = next.filter((job) => !removedIds.has(job.id));
       error.value = "";
       if (completed.length) await published?.(completed);
     } catch (e) {
@@ -58,7 +62,36 @@ export function useReviewJobs(
       }
     }
   }
+  async function remove(id: string) {
+    if (!user.value || removing.value || disposed) return;
+    const epoch = generation;
+    removing.value = id;
+    error.value = "";
+    try {
+      try {
+        await deleteReview(id);
+      } catch (e) {
+        // Another tab may already have deleted the record.
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
+      if (epoch !== generation || disposed) return;
+      removedIds.add(id);
+      jobs.value = jobs.value.filter((job) => job.id !== id);
+      await removeRecord(`review-draft:${id}`).catch(() => {});
+    } catch (e) {
+      if (epoch === generation && !disposed) {
+        error.value = (e as Error).message;
+        if (e instanceof ApiError && e.status === 401) expired();
+      }
+    } finally {
+      if (epoch === generation) {
+        removing.value = "";
+        schedule();
+      }
+    }
+  }
   function upsert(job: ReviewJobSummary) {
+    removedIds.delete(job.id);
     jobs.value = [job, ...jobs.value.filter((j) => j.id !== job.id)].sort(
       (a, b) => b.createdAt.localeCompare(a.createdAt),
     );
@@ -78,6 +111,8 @@ export function useReviewJobs(
       generation++;
       clearTimeout(timer);
       inFlight = false;
+      removing.value = "";
+      removedIds.clear();
       jobs.value = [];
       error.value = "";
       void refresh();
@@ -90,5 +125,5 @@ export function useReviewJobs(
     clearTimeout(timer);
     document.removeEventListener("visibilitychange", visible);
   });
-  return { jobs, loading, error, refresh, upsert };
+  return { jobs, loading, removing, error, refresh, remove, upsert };
 }

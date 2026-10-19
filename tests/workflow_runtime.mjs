@@ -351,6 +351,47 @@ try {
     404,
   );
   const originalBody = files.get(`data/notes/${first.id}.json`);
+  const repositoryBeforeDelete = [...files];
+  const deletionRoute = `/api/reviews/${rejection.body.job.id}`;
+  assert.equal(
+    (
+      await call(
+        deletionRoute,
+        undefined,
+        bobCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await call(
+        deletionRoute,
+        undefined,
+        aliceCookie,
+        "https://evil.test",
+        "DELETE",
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call(
+        deletionRoute,
+        undefined,
+        aliceCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    200,
+  );
+  await restart();
+  assert.equal((await call(deletionRoute)).status, 404);
+  assert.deepEqual([...files], repositoryBeforeDelete);
   assert.equal(
     (
       await call(
@@ -461,6 +502,7 @@ try {
     nickname: true,
     multipleContributors: true,
     rejectionNoWrite: true,
+    authorOnlySubmissionDeletion: true,
     assetsUnchanged: true,
     repositoryIntegrity: true,
     soakSeconds: Math.round((Date.now() - started) / 1000),

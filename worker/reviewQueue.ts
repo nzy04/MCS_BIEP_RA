@@ -132,12 +132,10 @@ export class ReviewQueue {
       return null;
     }
   }
-  private async deleteEncrypted(prefix: string) {
-    const keys = [
-      ...(await this.state.storage.list({ prefix: `${prefix}:` })).keys(),
-    ];
+  private async deleteEncrypted(prefix: string, storage = this.state.storage) {
+    const keys = [...(await storage.list({ prefix: `${prefix}:` })).keys()];
     for (let i = 0; i < keys.length; i += 128)
-      await this.state.storage.delete(keys.slice(i, i + 128));
+      await storage.delete(keys.slice(i, i + 128));
   }
   private async schedule() {
     const now = Date.now(),
@@ -294,6 +292,39 @@ export class ReviewQueue {
       const job = id && (await this.state.storage.get<Job>(`job:${id}`));
       if (!job || job.owner !== user.id || job.expires <= Date.now())
         throw new HttpError(404, "审核任务不存在。");
+      if (action === "delete")
+        return await this.state.blockConcurrencyWhile(async () => {
+          try {
+            await this.state.storage.transaction(async (storage) => {
+              const current = await storage.get<Job>(`job:${job.id}`);
+              if (
+                !current ||
+                current.owner !== user.id ||
+                current.expires <= Date.now()
+              )
+                throw new HttpError(404, "审核任务不存在。");
+              if (reviewPending(current.status))
+                throw new HttpError(
+                  409,
+                  "笔记正在审核，请等待审核结束后再删除提交。",
+                );
+              await this.deleteEncrypted(`payload:${current.id}`, storage);
+              await this.deleteEncrypted(`candidate:${current.id}`, storage);
+              await storage.delete(`job:${current.id}`);
+            });
+            return json({ deleted: true });
+          } catch (error) {
+            return json(
+              {
+                error:
+                  error instanceof HttpError
+                    ? error.message
+                    : "删除暂时不可用，请稍后重试。",
+              },
+              error instanceof HttpError ? error.status : 500,
+            );
+          }
+        });
       if (action === "detail") {
         const payload =
           job.payloadExpires > Date.now()

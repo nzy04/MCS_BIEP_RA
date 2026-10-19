@@ -153,6 +153,10 @@ export async function publishNote(
 export async function reviewJobs(): Promise<ReviewJobSummary[]> {
   return (await api<{ jobs: ReviewJobSummary[] }>("/api/reviews")).jobs;
 }
+export const deleteReview = (id: string) =>
+  api<{ deleted: true }>(`/api/reviews/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 export const reviewDetail = (id: string) =>
   api<{ job: ReviewJobSummary; note: Note | null }>(
     `/api/reviews/${encodeURIComponent(id)}`,

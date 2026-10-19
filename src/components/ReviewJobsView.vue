@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { RefreshCw, FileText } from "lucide-vue-next";
+import { shallowRef } from "vue";
+import { RefreshCw, FileText, Trash2 } from "lucide-vue-next";
 import { sectionDefinitions } from "../../shared/note";
 import AiBadge from "./AiBadge.vue";
 import {
@@ -10,6 +11,7 @@ import {
 defineProps<{
   jobs: ReviewJobSummary[];
   loading: boolean;
+  removing: string;
   error: string;
   signedIn: boolean;
 }>();
@@ -17,10 +19,12 @@ defineEmits<{
   refresh: [];
   edit: [id: string];
   retry: [id: string];
+  remove: [id: string];
   open: [noteId: string];
   create: [];
   login: [];
 }>();
+const confirming = shallowRef("");
 const labels: Record<ReviewStatus, string> = {
   queued: "审核中",
   reviewing: "审核中",
@@ -123,12 +127,14 @@ const fieldLabel = (field: string) =>
           <button
             v-if="job.status === 'needs_changes' || job.status === 'failed'"
             class="button secondary"
+            :disabled="removing === job.id"
             @click="$emit('edit', job.id)"
           >
             修改笔记</button
           ><button
             v-if="job.status === 'failed'"
             class="button primary"
+            :disabled="removing === job.id"
             @click="$emit('retry', job.id)"
           >
             重试</button
@@ -146,6 +152,35 @@ const fieldLabel = (field: string) =>
             class="text-link"
             >GitHub 提交</a
           >
+          <div v-if="!reviewPending(job.status)" class="review-delete">
+            <template v-if="confirming === job.id">
+              <span class="review-delete-prompt"
+                >删除此提交记录？已发布笔记会保留。</span
+              >
+              <button
+                class="button secondary"
+                :disabled="!!removing"
+                @click="confirming = ''"
+              >
+                取消
+              </button>
+              <button
+                class="button secondary review-delete-button"
+                :disabled="!!removing"
+                @click="$emit('remove', job.id)"
+              >
+                {{ removing === job.id ? "删除中…" : "确认删除" }}
+              </button>
+            </template>
+            <button
+              v-else
+              class="button secondary review-delete-button"
+              :disabled="!!removing"
+              @click="confirming = job.id"
+            >
+              <Trash2 :size="16" />删除提交
+            </button>
+          </div>
         </div>
       </article>
     </div>
@@ -239,6 +274,22 @@ time {
 }
 .review-item-actions:empty {
   display: none;
+}
+.review-delete {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+}
+.review-delete-button {
+  color: #b42318;
+  border-color: #e7c4c0;
+}
+.review-delete-prompt {
+  font-size: 14px;
+  color: var(--muted);
 }
 @media (max-width: 720px) {
   .review-heading h1 {

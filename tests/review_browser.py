@@ -1,4 +1,4 @@
-import sys, pathlib, json, os
+import sys, pathlib, json, os, copy
 sys.path.insert(0, str(pathlib.Path('test-results/python-deps').resolve()))
 from playwright.sync_api import sync_playwright
 
@@ -22,7 +22,10 @@ def fixture(route):
         note = state['published']
         route.fulfill(json={'notes': [{k: v for k, v in note.items() if k not in ['sections', 'assets', 'sourceNames', 'review']}] if note else []})
     elif path == 'reviews':
-        route.fulfill(json={'jobs': state['jobs']})
+        if state.get('hold_list'):
+            state['held_list'] = (route, copy.deepcopy(state['jobs']))
+        else:
+            route.fulfill(json={'jobs': state['jobs']})
     elif path == 'publish':
         state['publish_calls'] += 1
         state['submitted'] = route.request.post_data_json['note']
@@ -30,7 +33,15 @@ def fixture(route):
         state['jobs'] = [job]
         route.fulfill(status=202, json={'job': job})
     elif path == 'reviews/' + job_id:
-        route.fulfill(json={'job': state['jobs'][0], 'note': state['submitted'] if state.get('details', True) else None})
+        if route.request.method == 'DELETE':
+            state['delete_calls'] = state.get('delete_calls', 0) + 1
+            if state.pop('fail_delete', False):
+                route.fulfill(status=503, json={'error': '删除暂时不可用，请稍后重试。'})
+            else:
+                state['jobs'] = []
+                route.fulfill(json={'deleted': True})
+        else:
+            route.fulfill(json={'job': state['jobs'][0], 'note': state['submitted'] if state.get('details', True) else None})
     elif path.startswith('notes/') and state['published']:
         route.fulfill(json=state['published'])
     else:
@@ -58,6 +69,7 @@ with sync_playwright() as p:
     page.get_by_role('button', name='确认发布到仓库', exact=True).click()
     page.get_by_role('heading', name='我的提交', exact=True).wait_for()
     page.locator('.review-status', has_text='审核中').wait_for()
+    assert page.get_by_role('button', name='删除提交', exact=True).count() == 0
     assert state['publish_calls'] == 1
     assert state['submitted'].get('pdfUrl', '') == ''
     page.screenshot(path=str(out / 'review-pending.png'), full_page=False)
@@ -100,6 +112,47 @@ with sync_playwright() as p:
     mobile_page.locator('.review-status', has_text='已发布').wait_for()
     assert mobile_page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     mobile_page.screenshot(path=str(out / 'review-mobile.png'), full_page=True)
+    # Deleting a published submission preserves the published note.
+    mobile_page.get_by_role('button', name='删除提交', exact=True).click()
+    assert mobile_page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    mobile_page.get_by_role('button', name='确认删除', exact=True).click()
+    mobile_page.get_by_role('heading', name='暂无提交', exact=True).wait_for()
+    mobile_page.goto(base + '#paper/' + state['published']['id'])
+    mobile_page.get_by_role('heading', name='World Models', exact=True).wait_for()
+    # Also delete a needs_changes record, including failure/cancel and stale polling.
+    state['jobs'] = [{'id': job_id, 'noteId': state['submitted']['id'], 'title': '待修改的笔记', 'status': 'needs_changes', 'createdAt': '2026-10-18T15:00:00Z', 'updatedAt': '2026-10-18T15:00:00Z', 'issues': [], 'message': ''}]
+    page.goto(base + '#reviews'); page.reload()
+    page.get_by_role('heading', name='待修改的笔记', exact=True).wait_for()
+    delete_button = page.get_by_role('button', name='删除提交', exact=True)
+    edit_box = page.get_by_role('button', name='修改笔记', exact=True).bounding_box()
+    delete_box = delete_button.bounding_box()
+    assert delete_box['x'] > edit_box['x'] + edit_box['width']
+    assert abs(delete_box['y'] - edit_box['y']) < 3
+    page.screenshot(path=str(out / 'review-delete.png'), full_page=False)
+    await_script = '''async (id) => {
+        const db = await new Promise((resolve,reject) => { const r=indexedDB.open('paper-commons-v1',1); r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });
+        await new Promise((resolve,reject) => { const t=db.transaction('records','readwrite'); const s=t.objectStore('records'); s.put({saved:true},'review-draft:'+id); s.put({unrelated:true},'draft'); t.oncomplete=resolve; t.onerror=()=>reject(t.error); }); db.close();
+    }'''
+    page.evaluate(await_script, job_id)
+    delete_button.click(); page.get_by_role('button', name='取消', exact=True).click()
+    assert state['delete_calls'] == 1
+    state['fail_delete'] = True
+    delete_button.click(); page.get_by_role('button', name='确认删除', exact=True).click()
+    page.get_by_role('alert').filter(has_text='删除暂时不可用').wait_for()
+    assert page.locator('.review-item').count() == 1
+    state['hold_list'] = True
+    page.get_by_role('button', name='刷新', exact=True).click()
+    page.wait_for_function("document.querySelector('.review-heading button').disabled")
+    page.get_by_role('button', name='确认删除', exact=True).click()
+    page.get_by_role('heading', name='暂无提交', exact=True).wait_for()
+    state['hold_list'] = False
+    held_route, snapshot = state.pop('held_list')
+    held_route.fulfill(json={'jobs': snapshot})
+    page.wait_for_function("!document.querySelector('.review-heading button').disabled")
+    assert page.locator('.review-item').count() == 0
+    saved = page.evaluate('''async (id) => { const db = await new Promise(r=>{const q=indexedDB.open('paper-commons-v1',1);q.onsuccess=()=>r(q.result)}); const read=(key)=>new Promise(r=>{const q=db.transaction('records').objectStore('records').get(key);q.onsuccess=()=>r(q.result??null)}); const result=[await read('review-draft:'+id),await read('draft')];db.close();return result; }''', job_id)
+    assert saved == [None, {'unrelated': True}], saved
+    page.reload(); page.get_by_role('heading', name='暂无提交', exact=True).wait_for()
     assert not errors, errors
     browser.close()
-print(json.dumps({'callsOnlyAfterConfirmation': True, 'pendingSurvivesReload': True, 'feedbackAndRevision': True, 'publishedReadable': True, 'mobile390': True, 'runtimeErrors': errors}, ensure_ascii=False))
+print(json.dumps({'callsOnlyAfterConfirmation': True, 'pendingSurvivesReload': True, 'feedbackAndRevision': True, 'publishedReadable': True, 'mobile390': True, 'deleteNeedsChangesAndPublished': True, 'deleteFailureAndCancel': True, 'stalePollDoesNotResurrect': True, 'draftCleanup': True, 'runtimeErrors': errors}, ensure_ascii=False))

@@ -539,6 +539,115 @@ test("未通过不会写仓库，其他成员无法查看任务或原文", async
     [],
   );
 });
+test("待修改提交仅本人可删除，草稿与候选内容清理且已用额度保留", async () => {
+  const f = fixture({
+    review: async (n) => ({ approved: false, note: n, issues: [] }),
+  });
+  const n = note();
+  const { job } = (await (await f.submit(n)).json()) as any;
+  await f.queue.alarm();
+  const usage = [...(await f.storage.list({ prefix: "usage:" }))];
+  assert.ok((await f.storage.list({ prefix: `payload:${job.id}:` })).size);
+  assert.ok((await f.storage.list({ prefix: `candidate:${job.id}:` })).size);
+  assert.equal(
+    (await f.call("delete", { id: job.id }, { ...user, id: 99 })).status,
+    404,
+  );
+  assert.equal(
+    (await f.call("delete", { id: job.id }, { ...user, canWrite: false }))
+      .status,
+    200,
+  );
+  assert.deepEqual(((await (await f.call("list")).json()) as any).jobs, []);
+  assert.equal((await f.call("detail", { id: job.id })).status, 404);
+  assert.equal(
+    (await f.storage.list({ prefix: `payload:${job.id}:` })).size,
+    0,
+  );
+  assert.equal(
+    (await f.storage.list({ prefix: `candidate:${job.id}:` })).size,
+    0,
+  );
+  assert.deepEqual([...(await f.storage.list({ prefix: "usage:" }))], usage);
+  assert.equal(f.counts().commits, 0);
+  // A new explicit submission can reuse the content hash, but consumes a new quota.
+  assert.equal((await f.submit(n)).status, 202);
+  assert.equal(
+    [...(await f.storage.list<any>({ prefix: "usage:" }))][0][1].total,
+    2,
+  );
+});
+
+test("审核中提交禁止删除，已发布或失败的提交可删除且不改仓库", async () => {
+  const f = fixture();
+  const { job } = (await (await f.submit()).json()) as any;
+  for (const status of ["queued", "reviewing", "publishing"]) {
+    f.storage.data.get(`job:${job.id}`).status = status;
+    assert.equal((await f.call("delete", { id: job.id })).status, 409);
+    assert.ok(f.storage.data.has(`job:${job.id}`));
+  }
+  f.storage.data.get(`job:${job.id}`).status = "queued";
+  await f.queue.alarm();
+  assert.equal((await f.call("delete", { id: job.id })).status, 200);
+  await f.queue.alarm();
+  assert.deepEqual(f.counts(), { reviews: 1, commits: 1 });
+  const failed = (await (await f.submit()).json()) as any;
+  f.storage.data.get(`job:${failed.job.id}`).status = "failed";
+  assert.equal((await f.call("delete", { id: failed.job.id })).status, 200);
+  assert.deepEqual(f.counts(), { reviews: 1, commits: 1 });
+});
+
+test("删除存储失败会完整回滚，允许稍后重试", async () => {
+  const f = fixture({
+    review: async (n) => ({ approved: false, note: n, issues: [] }),
+  });
+  const { job } = (await (await f.submit()).json()) as any;
+  await f.queue.alarm();
+  const before = [...f.storage.data];
+  const original = f.storage.delete.bind(f.storage);
+  f.storage.delete = async (key) => {
+    if (key === `job:${job.id}`) throw new Error("simulated deletion failure");
+    return original(key);
+  };
+  assert.equal((await f.call("delete", { id: job.id })).status, 500);
+  assert.deepEqual([...f.storage.data], before);
+  f.storage.delete = original;
+  assert.equal((await f.call("delete", { id: job.id })).status, 200);
+});
+
+test("删除提交接口拒绝匿名和跨站请求", async () => {
+  const cookie = `mcs_session=${await seal(user, env.SESSION_SECRET)}`;
+  const url = `https://site.test/api/reviews/review-${"a".repeat(48)}`;
+  assert.equal(
+    (await handle(new Request(url, { method: "DELETE" }), env)).status,
+    401,
+  );
+  assert.equal(
+    (
+      await handle(
+        new Request(url, {
+          method: "DELETE",
+          headers: { Cookie: cookie, Origin: "https://evil.test" },
+        }),
+        env,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await handle(
+        new Request(`${url}/retry`, {
+          method: "DELETE",
+          headers: { Cookie: cookie, Origin: "https://site.test" },
+        }),
+        env,
+      )
+    ).status,
+    405,
+  );
+});
+
 test("发布失败的明确重试复用已通过审核，服务重启不重复调用模型", async () => {
   let attempts = 0;
   const f = fixture({
