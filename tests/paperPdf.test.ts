@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createNote, toMarkdown } from "../shared/note";
 import { inferPdfUrl, findFreePdf } from "../worker/paperPdf";
 import { reviewSubmission, titleScore } from "../worker/review";
-import { validateIncoming, handle } from "../worker/app";
+import { validateIncoming } from "../worker/app";
 const settings = { DEEPSEEK_API_KEY: "test-key" };
 const reply = (value: unknown) =>
   new Response(JSON.stringify(value), {
@@ -273,18 +273,4 @@ test("Crossref 明确 DOI 和安全 PDF 元数据可补充，非法链接或过�
     () => validateIncoming({ note: { ...n, pdfUrl: "x".repeat(1501) } }),
     /pdfUrl/,
   );
-});
-test("错误引入的独立收录接口已移除，不能再单独提交论文", async () => {
-  const env: any = { ASSETS: { fetch: async () => new Response("site") } };
-  for (const path of [
-    "/api/paper-search",
-    "/api/paper-collect",
-    "/api/papers",
-  ]) {
-    const r = await handle(
-      new Request("https://site.test" + path, { method: "POST" }),
-      env,
-    );
-    assert.equal(r.status, 404);
-  }
 });

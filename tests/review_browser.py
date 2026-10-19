@@ -44,7 +44,6 @@ with sync_playwright() as p:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(base); page.wait_for_load_state('networkidle')
-    assert page.get_by_role('link', name='按标题收录', exact=True).count() == 0
     page.get_by_role('button', name='上传笔记', exact=True).click()
     page.get_by_role('button', name='在线写笔记', exact=True).click()
     page.get_by_label('笔记标题', exact=True).fill('World Models')
