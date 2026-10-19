@@ -1,18 +1,14 @@
-import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-const require = createRequire(import.meta.url);
-const { Miniflare, Response } = require(
-  require.resolve("miniflare", { paths: [require.resolve("wrangler")] }),
-);
+import {
+  Miniflare,
+  Response,
+  runtimeOptions,
+} from "./support/workerRuntime.mjs";
 const persist = path.resolve(`test-results/review-runtime-${Date.now()}`);
 let modelCalls = 0,
   gitWrites = 0;
 const settings = {
-  modules: true,
-  scriptPath: "test-results/review-bundle/index.js",
-  compatibilityDate: "2026-10-18",
   bindings: {
     SITE_TITLE: "MCS_BIEP",
     GITHUB_OWNER: "test-group",
@@ -21,10 +17,6 @@ const settings = {
     SESSION_SECRET: "only-a-test-session-key-with-32-characters",
     DEEPSEEK_API_KEY: "only-a-test-api-key",
   },
-  durableObjects: {
-    REVIEW_QUEUE: { className: "ReviewQueue", useSQLite: true },
-  },
-  durableObjectsPersist: persist,
   outboundService: async (request) => {
     const url = new URL(request.url);
     if (
@@ -70,44 +62,12 @@ const settings = {
     return new Response("Unexpected outbound request", { status: 500 });
   },
 };
-const runtimeSettings = {
-  resourcePersistencePath: persist,
-  telemetry: { enabled: false },
-  workers: [
-    {
-      config: {
-        name: "review-runtime-test",
-        compatibilityDate: settings.compatibilityDate,
-        manifest: {
-          mainModule: "index.js",
-          modules: {
-            "index.js": {
-              type: "esm",
-              contents: readFileSync(settings.scriptPath, "utf8"),
-            },
-          },
-        },
-        env: {
-          ...Object.fromEntries(
-            Object.entries(settings.bindings).map(([key, value]) => [
-              key,
-              { type: "text", value },
-            ]),
-          ),
-          REVIEW_QUEUE: {
-            type: "durable-object",
-            worker: "review-runtime-test",
-            exportName: "ReviewQueue",
-          },
-        },
-        exports: { ReviewQueue: { type: "durable-object", storage: "sqlite" } },
-      },
-      dev: {
-        outboundService: { type: "fetcher", handler: settings.outboundService },
-      },
-    },
-  ],
-};
+const runtimeSettings = runtimeOptions(
+  "review-runtime-test",
+  persist,
+  settings.bindings,
+  settings.outboundService,
+);
 const person = {
   id: 7,
   login: "runtime-member",

@@ -26,14 +26,28 @@ export async function readRepositoryJson<T>(
   fetcher: typeof fetch = fetch,
 ): Promise<T> {
   try {
-    const file = await github<{ content?: string }>(
-      env,
-      `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`,
-      user.token,
-      {},
-      fetcher,
-    );
-    if (!file.content) throw new HttpError(413, "仓库数据文件过大，无法读取。");
+    const endpoint = `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`;
+    const file = await github<{
+      content?: string;
+      encoding?: string;
+      size?: number;
+    }>(env, endpoint, user.token, {}, fetcher);
+    if ((file.size || 0) > 8 * 1024 * 1024)
+      throw new HttpError(
+        413,
+        "单份目录数据已超过 8 MB，请联系维护者拆分目录后再修改。",
+      );
+    if (!file.content && file.encoding === "none") {
+      return await github<T>(
+        env,
+        endpoint,
+        user.token,
+        { headers: { Accept: "application/vnd.github.raw+json" } },
+        fetcher,
+      );
+    }
+    if (!file.content)
+      throw new HttpError(502, "仓库数据内容无法读取，本次修改未保存。");
     return JSON.parse(
       new TextDecoder().decode(
         Uint8Array.from(atob(file.content.replace(/\s/g, "")), (c) =>
@@ -71,6 +85,71 @@ export async function profileSession(
     avatar: user.avatar,
     canWrite: user.canWrite,
   };
+}
+
+async function readOwnedNotes(
+  env: Env,
+  user: Identity,
+  owned: NoteSummary[],
+  ref: string,
+  fetcher: typeof fetch,
+): Promise<Note[]> {
+  if (owned.length <= 20) {
+    const notes = await Promise.all(
+      owned.map((n) =>
+        readRepositoryJson<Note | null>(
+          env,
+          user,
+          `data/notes/${n.id}.json`,
+          ref,
+          null,
+          fetcher,
+        ),
+      ),
+    );
+    if (notes.some((n) => !n))
+      throw new HttpError(
+        409,
+        "有一篇历史笔记暂时无法读取，昵称尚未修改，请稍后重试。",
+      );
+    return notes as Note[];
+  }
+  const notes: Note[] = [];
+  for (let offset = 0; offset < owned.length; offset += 25) {
+    const batch = owned.slice(offset, offset + 25);
+    const fields = batch
+      .map(
+        (n, i) =>
+          `n${i}: object(expression: ${JSON.stringify(`${ref}:data/notes/${n.id}.json`)}) { ... on Blob { text } }`,
+      )
+      .join("\n");
+    const query = `{ repository(owner: ${JSON.stringify(env.GITHUB_OWNER)}, name: ${JSON.stringify(env.GITHUB_REPO)}) { ${fields} } }`;
+    const result = await github<{
+      data?: { repository?: Record<string, { text?: string }> };
+      errors?: unknown[];
+    }>(
+      env,
+      "/graphql",
+      user.token,
+      { method: "POST", body: JSON.stringify({ query }) },
+      fetcher,
+    );
+    if (result.errors?.length || !result.data?.repository)
+      throw new HttpError(
+        409,
+        "历史笔记批量读取失败，昵称尚未修改，请稍后重试。",
+      );
+    for (let i = 0; i < batch.length; i++) {
+      const text = result.data.repository[`n${i}`]?.text;
+      if (!text)
+        throw new HttpError(409, "有一篇历史笔记暂时无法读取，昵称尚未修改。");
+      const note = JSON.parse(text) as Note;
+      if (note.id !== batch[i].id || !ownsNote(note, user))
+        throw new HttpError(409, "历史笔记归属与目录不一致，昵称尚未修改。");
+      notes.push(note);
+    }
+  }
+  return notes;
 }
 
 export async function updateProfile(
@@ -139,20 +218,13 @@ export async function updateProfile(
     ];
     const changed: Note[] = [];
     // Read from the same immutable head as the index; never commit a partial rename.
-    for (const entry of owned) {
-      const previous = await readRepositoryJson<Note | null>(
-        env,
-        user,
-        `data/notes/${entry.id}.json`,
-        head.object.sha,
-        null,
-        fetcher,
-      );
-      if (!previous)
-        throw new HttpError(
-          409,
-          "有一篇历史笔记暂时无法读取，昵称尚未修改，请稍后重试。",
-        );
+    for (const previous of await readOwnedNotes(
+      env,
+      user,
+      owned,
+      head.object.sha,
+      fetcher,
+    )) {
       const note = {
         ...previous,
         author: name,
@@ -161,7 +233,7 @@ export async function updateProfile(
       };
       changed.push(note);
       files.push({
-        path: `data/notes/${entry.id}.json`,
+        path: `data/notes/${previous.id}.json`,
         content: JSON.stringify(note, null, 2),
       });
     }

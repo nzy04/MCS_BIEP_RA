@@ -4,10 +4,12 @@ import { EditorContent, useEditor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
-import Table from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
+import {
+  Table,
+  TableRow,
+  TableCell,
+  TableHeader,
+} from "@tiptap/extension-table";
 import {
   Bold,
   Italic,
@@ -47,7 +49,7 @@ let emitted = body.value;
 
 const editor = useEditor({
   extensions: [
-    StarterKit,
+    StarterKit.configure({ link: false }),
     Image.configure({ allowBase64: true }),
     Link.configure({ openOnClick: false }),
     Table.configure({ resizable: false }),
@@ -84,7 +86,7 @@ watch(body, (value) => {
     emitted = value;
     editor.value?.commands.setContent(
       renderedMarkdown(value, props.assets, props.assetBase),
-      false,
+      { emitUpdate: false },
     );
   }
 });
@@ -92,7 +94,7 @@ watch(sourceMode, (value) => {
   if (!value)
     editor.value?.commands.setContent(
       renderedMarkdown(body.value, props.assets, props.assetBase),
-      false,
+      { emitUpdate: false },
     );
 });
 const inTable = computed(() => editor.value?.isActive("table") || false);
@@ -172,7 +174,9 @@ function removeAsset(asset: NoteAsset) {
     )
       image.remove();
   }
-  editor.value?.commands.setContent(document.body.innerHTML, true);
+  editor.value?.commands.setContent(document.body.innerHTML, {
+    emitUpdate: true,
+  });
   emit("removeAsset", asset.path);
 }
 function insertTemplate() {

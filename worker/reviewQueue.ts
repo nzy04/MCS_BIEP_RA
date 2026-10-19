@@ -91,7 +91,11 @@ export class ReviewQueue {
       ...(await this.state.storage.list<Job>({ prefix: "job:" })).values(),
     ];
   }
-  private async writeEncrypted(prefix: string, value: unknown) {
+  private async writeEncrypted(
+    prefix: string,
+    value: unknown,
+    storage = this.state.storage,
+  ) {
     const text = JSON.stringify(value),
       entries: Record<string, unknown> = {};
     const count = Math.ceil(text.length / 20_000);
@@ -102,12 +106,12 @@ export class ReviewQueue {
         this.env.SESSION_SECRET,
       );
       if (Object.keys(entries).length === 32) {
-        await this.state.storage.put(entries);
+        await storage.put(entries);
         for (const key of Object.keys(entries)) delete entries[key];
       }
     }
-    if (Object.keys(entries).length) await this.state.storage.put(entries);
-    await this.state.storage.put(`${prefix}:count`, count);
+    if (Object.keys(entries).length) await storage.put(entries);
+    await storage.put(`${prefix}:count`, count);
   }
   private async readEncrypted<T>(prefix: string): Promise<T | null> {
     const count = await this.state.storage.get<number>(`${prefix}:count`);
@@ -162,7 +166,10 @@ export class ReviewQueue {
       (usage.members[String(user.id)] || 0) >=
         limit(this.env.REVIEW_USER_DAILY_LIMIT, 10)
     )
-      throw new HttpError(429, "今日审核额度已用完，请明天再提交。");
+      throw new HttpError(
+        429,
+        "审核额度已用完，额度在每天北京时间 08:00 重置。",
+      );
     usage.total++;
     usage.members[String(user.id)] = (usage.members[String(user.id)] || 0) + 1;
     return { key, usage };
@@ -227,15 +234,16 @@ export class ReviewQueue {
       approved: false,
     };
     await this.state.storage.transaction(async (storage) => {
+      await this.writeEncrypted(
+        `payload:${id}`,
+        { user, value } satisfies Payload,
+        storage,
+      );
       await storage.put({ [`job:${id}`]: job, [usage.key]: usage.usage });
       const alarm = await storage.getAlarm();
       if (alarm === null || alarm > now + 1000)
         await storage.setAlarm(now + 1000);
     });
-    await this.writeEncrypted(`payload:${id}`, {
-      user,
-      value,
-    } satisfies Payload);
     return json({ job: summary(job) }, 202);
   }
   async fetch(request: Request): Promise<Response> {
@@ -330,14 +338,15 @@ export class ReviewQueue {
                 "服务器草稿已到期，请从本机草稿重新提交。",
               );
             const usage = await this.countSubmission(user);
-            await this.writeEncrypted(`payload:${current.id}`, {
-              ...payload,
-              user,
-            });
             current.status = current.approved ? "publishing" : "queued";
             current.message = "";
             current.updatedAt = new Date().toISOString();
             await this.state.storage.transaction(async (storage) => {
+              await this.writeEncrypted(
+                `payload:${current.id}`,
+                { ...payload, user },
+                storage,
+              );
               await storage.put({
                 [`job:${current.id}`]: current,
                 [usage.key]: usage.usage,

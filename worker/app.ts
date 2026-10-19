@@ -10,7 +10,7 @@ import {
 } from "../shared/note";
 import type { ReviewQueueNamespace, ReviewReceipt } from "../shared/review";
 import { ownsNote } from "../shared/papers";
-import { profileSession, updateProfile } from "./profile";
+import { profileSession, updateProfile, readRepositoryJson } from "./profile";
 import { createDirection, repositoryDirections } from "./directions";
 import { layoutEntries } from "./layout";
 import { moveNotes } from "./move";
@@ -141,23 +141,32 @@ function requireOrigin(request: Request) {
     throw new HttpError(403, "请求来源不匹配，请从本网站重新提交。");
 }
 export async function github<T = any>(
-  env: Env,
+  _env: Env,
   path: string,
   token: string,
   init: RequestInit = {},
   fetcher: typeof fetch = fetch,
 ): Promise<T> {
-  const response = await fetcher(`https://api.github.com${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "MCS-BIEP-RA",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetcher(`https://api.github.com${path}`, {
+      ...init,
+      signal: init.signal || AbortSignal.timeout(20_000),
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "MCS-BIEP-RA",
+        Authorization: `Bearer ${token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new HttpError(
+      504,
+      "GitHub 响应超时或连接失败。请刷新核对是否已保存，再重试。",
+    );
+  }
   if (!response.ok) {
     const error = (await response.json().catch(() => ({ message: "" }))) as {
       message?: string;
@@ -165,18 +174,26 @@ export async function github<T = any>(
     throw new HttpError(
       response.status === 401
         ? 401
-        : response.status === 403
-          ? 403
-          : response.status === 404
-            ? 404
-            : response.status === 422 || response.status === 409
-              ? 409
-              : 502,
+        : response.status === 429 ||
+            (response.status === 403 &&
+              response.headers.get("x-ratelimit-remaining") === "0")
+          ? 429
+          : response.status === 403
+            ? 403
+            : response.status === 404
+              ? 404
+              : response.status === 422 || response.status === 409
+                ? 409
+                : 502,
       response.status === 401
         ? "GitHub 登录已失效，请重新登录。"
-        : response.status === 403
-          ? "当前账号或应用没有仓库写入权限。"
-          : `GitHub 请求失败：${error.message || response.status}`,
+        : response.status === 429 ||
+            (response.status === 403 &&
+              response.headers.get("x-ratelimit-remaining") === "0")
+          ? "GitHub 请求额度暂时用完，请稍后重试。草稿仍保留。"
+          : response.status === 403
+            ? "当前账号或应用没有仓库写入权限。"
+            : `GitHub 请求失败：${error.message || response.status}`,
     );
   }
   return response.json() as Promise<T>;
@@ -234,13 +251,14 @@ export function validateIncoming(value: any): {
   };
   const metadata = input.assets.map((a: any) => {
     if (
+      !a ||
       typeof a.path !== "string" ||
       !a.path.startsWith(prefix) ||
       !/^[-a-zA-Z0-9.]+$/.test(a.path.slice(prefix.length)) ||
       !allowed[a.mime]?.test(a.path) ||
-      typeof a.size !== "number" ||
+      !Number.isSafeInteger(a.size) ||
       a.size < 0 ||
-      a.size > 4 * 1024 * 1024
+      a.size > (a.mime === "application/pdf" ? 4 : 2) * 1024 * 1024
     )
       throw new HttpError(400, "附件路径、格式或大小不合法。");
     return {
@@ -250,9 +268,21 @@ export function validateIncoming(value: any): {
       ...(typeof a.name === "string" ? { name: a.name.slice(0, 250) } : {}),
     };
   });
+  if (new Set(metadata.map((a: any) => a.path)).size !== metadata.length)
+    throw new HttpError(400, "附件路径不能重复。");
+  if (
+    metadata.reduce((sum: number, a: any) => sum + a.size, 0) >
+    6 * 1024 * 1024
+  )
+    throw new HttpError(413, "附件总量请控制在 6 MB 内。");
   const assets = value.assets ?? [];
   if (!Array.isArray(assets) || assets.length > 25)
     throw new HttpError(400, "附件列表不合法。");
+  if (
+    assets.some((a: any) => !a || typeof a.path !== "string") ||
+    new Set(assets.map((a: any) => a.path)).size !== assets.length
+  )
+    throw new HttpError(400, "附件列表不合法或路径重复。");
   let bytes = 0;
   for (const a of assets) {
     const m = metadata.find((m: any) => m.path === a.path);
@@ -261,9 +291,15 @@ export function validateIncoming(value: any): {
       m.mime !== a.mime ||
       typeof a.base64 !== "string" ||
       a.base64.length % 4 !== 0 ||
+      a.base64.length > 6 * 1024 * 1024 ||
       !/^[A-Za-z0-9+/]*={0,2}$/.test(a.base64)
     )
       throw new HttpError(400, "附件编码不合法。");
+    const decodedSize =
+      (a.base64.length * 3) / 4 -
+      (a.base64.endsWith("==") ? 2 : a.base64.endsWith("=") ? 1 : 0);
+    if (decodedSize !== m.size)
+      throw new HttpError(400, "附件实际大小与声明不一致，请重新添加。");
     bytes += a.base64.length * 0.75;
     if (bytes > 6 * 1024 * 1024)
       throw new HttpError(413, "一次发布的附件总量请控制在 6 MB 内。");
@@ -382,27 +418,14 @@ export async function commitNote(
       {},
       fetcher,
     );
-    let index: { notes: NoteSummary[] } = { notes: [] };
-    try {
-      const file = await github<any>(
-        env,
-        `${root}/contents/data/library.json?ref=${head.object.sha}`,
-        user.token,
-        {},
-        fetcher,
-      );
-      if (file.content)
-        index = JSON.parse(
-          new TextDecoder().decode(
-            Uint8Array.from(atob(file.content.replace(/\s/g, "")), (c) =>
-              c.charCodeAt(0),
-            ),
-          ),
-        );
-      else throw new HttpError(413, "目录文件过大，需要升级目录读取方式。");
-    } catch (e) {
-      if ((e as HttpError).status !== 404) throw e;
-    }
+    const index = await readRepositoryJson<{ notes: NoteSummary[] }>(
+      env,
+      user,
+      "data/library.json",
+      head.object.sha,
+      { notes: [] },
+      fetcher,
+    );
     const previous = index.notes.find((n) => n.id === note.id);
     if (previous && !ownsNote(previous, user))
       throw new HttpError(
@@ -432,20 +455,19 @@ export async function commitNote(
     const oldAssets = new Set<string>();
     if (previous) {
       try {
-        const file = await github<any>(
+        const old = await readRepositoryJson<Note | null>(
           env,
-          `${root}/contents/data/notes/${note.id}.json?ref=${head.object.sha}`,
-          user.token,
-          {},
+          user,
+          `data/notes/${note.id}.json`,
+          head.object.sha,
+          null,
           fetcher,
         );
-        const old = JSON.parse(
-          new TextDecoder().decode(
-            Uint8Array.from(atob(file.content.replace(/\s/g, "")), (c) =>
-              c.charCodeAt(0),
-            ),
-          ),
-        );
+        if (!old)
+          throw new HttpError(
+            409,
+            "原笔记内容缺失，本次修改未保存，请联系维护者。",
+          );
         for (const a of old.assets ?? []) {
           if (
             typeof a.path === "string" &&
@@ -584,6 +606,7 @@ async function readPublic(env: Env, path: string) {
   source.searchParams.set("v", crypto.randomUUID());
   const response = await fetch(source.toString(), {
     headers: { "User-Agent": "MCS-BIEP-RA" },
+    signal: AbortSignal.timeout(15_000),
   });
   if (
     response.status === 404 &&
@@ -731,6 +754,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         "https://github.com/login/oauth/access_token",
         {
           method: "POST",
+          signal: AbortSignal.timeout(20_000),
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",

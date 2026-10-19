@@ -27,11 +27,12 @@ export function directionReadme(
   folder: string,
   name: string,
   notes: NoteSummary[],
+  available?: Set<string>,
 ): TreeEntry {
   const members = notes.filter((n) => noteFolders(n.tags).includes(folder));
   const rows = members.map(
     (n) =>
-      `- [${text(n.title)}](./${n.id}.md) · ${text(n.author || n.authorLogin || "未署名")}`,
+      `- [${text(n.title)}](${available && !available.has(`${folder}/${n.id}.md`) && available.has(`papers/${n.id}.md`) ? "../" : "./"}${n.id}.md) · ${text(n.author || n.authorLogin || "未署名")}`,
   );
   return file(
     `${folder}/README.md`,
@@ -83,13 +84,16 @@ export async function layoutEntries(
         removed.add(`${folder}/${note.id}.md`);
     }
   }
-  for (const folder of affected) {
-    const name =
-      directions.find((n) => directionFolder(n) === folder) || "未分类";
-    entries.push(directionReadme(folder, name, after));
-  }
+  let available: Set<string> | undefined;
   // GitHub rejects deletion of nonexistent files. Only remove verified generated paths.
-  if (removed.size) {
+  if (
+    removed.size ||
+    after.some(
+      (n) =>
+        !changed.some((c) => c.id === n.id) &&
+        noteFolders(n.tags).some((folder) => affected.has(folder)),
+    )
+  ) {
     const tree = await github<{
       tree: { path: string }[];
       truncated?: boolean;
@@ -101,11 +105,20 @@ export async function layoutEntries(
       fetcher,
     );
     if (tree.truncated)
-      throw new HttpError(413, "仓库目录过大，尚未移动，请联系维护者。");
+      throw new HttpError(
+        413,
+        "仓库目录过大，本次修改尚未保存，请联系维护者。",
+      );
     const existing = new Set(tree.tree.map((e) => e.path));
+    available = new Set([...existing, ...entries.map((e) => e.path)]);
     for (const path of removed)
       if (existing.has(path))
         entries.push({ path, mode: "100644", type: "blob", sha: null });
+  }
+  for (const folder of affected) {
+    const name =
+      directions.find((n) => directionFolder(n) === folder) || "未分类";
+    entries.push(directionReadme(folder, name, after, available));
   }
   return entries;
 }

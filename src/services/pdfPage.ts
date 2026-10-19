@@ -4,9 +4,15 @@ export async function pdfPageImage(file: File, pageNumber: number) {
     "pdfjs-dist/build/pdf.worker.min.mjs?url"
   );
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const pdf = await pdfjs.getDocument({
+  const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
     useSystemFonts: true,
+    wasmUrl: import.meta.env.DEV
+      ? "/node_modules/pdfjs-dist/wasm/"
+      : "/pdf/wasm/",
+    iccUrl: import.meta.env.DEV
+      ? "/node_modules/pdfjs-dist/iccs/"
+      : "/pdf/iccs/",
     cMapUrl: import.meta.env.DEV
       ? "/node_modules/pdfjs-dist/cmaps/"
       : "/pdf/cmaps/",
@@ -14,8 +20,9 @@ export async function pdfPageImage(file: File, pageNumber: number) {
     standardFontDataUrl: import.meta.env.DEV
       ? "/node_modules/pdfjs-dist/standard_fonts/"
       : "/pdf/standard_fonts/",
-  }).promise;
+  });
   try {
+    const pdf = await loadingTask.promise;
     if (
       !Number.isInteger(pageNumber) ||
       pageNumber < 1 ||
@@ -53,6 +60,6 @@ export async function pdfPageImage(file: File, pageNumber: number) {
       url: canvas.toDataURL("image/webp", 0.9),
     };
   } finally {
-    await pdf.destroy();
+    await loadingTask.destroy();
   }
 }

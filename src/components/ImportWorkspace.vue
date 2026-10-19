@@ -48,7 +48,6 @@ const {
   noteFile,
   paperFile,
   paperPreview,
-  paperText,
   retainPdf,
   draftSaved,
   recovered,
@@ -85,7 +84,7 @@ const remote = computed(
 );
 const canContinue = computed(() => !!noteFile.value || !!noteBody(draft.value));
 onMounted(async () => {
-  hasDraft.value = !!(await getRecord("draft"));
+  hasDraft.value = !!(await getRecord("draft").catch(() => undefined));
   initialized.value = true;
   syncAuthor();
 });

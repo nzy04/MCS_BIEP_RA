@@ -77,7 +77,7 @@ export function useWorkspace() {
   async function refresh() {
     try {
       remoteNotes.value = await api.library(configuration.value.configured);
-      const local = await localNotes();
+      const local = await localNotes().catch(() => []);
       const ids = new Set(local.map((n) => n.id));
       notes.value = [
         ...local.map(summarize),
@@ -98,7 +98,7 @@ export function useWorkspace() {
     loading.value = true;
     try {
       const note =
-        (await localNotes()).find((n) => n.id === id) ??
+        (await localNotes().catch(() => [])).find((n) => n.id === id) ??
         (await api.loadNote(id, configuration.value.configured));
       if (request !== openRequest) return;
       selectedNote.value = note;
@@ -296,7 +296,12 @@ export function useWorkspace() {
     }
   }
   function hashChanged() {
-    const hash = decodeURIComponent(location.hash.slice(1));
+    let hash: string;
+    try {
+      hash = decodeURIComponent(location.hash.slice(1));
+    } catch {
+      hash = "";
+    }
     if (hash.startsWith("paper/")) {
       if (selectedNote.value?.id === hash.slice(6)) view.value = "reader";
       else void openNote(hash.slice(6));

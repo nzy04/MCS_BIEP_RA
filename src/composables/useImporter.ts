@@ -27,7 +27,6 @@ export function useImporter(existing?: Note | null) {
   const noteFile = shallowRef<File | null>(null);
   const paperFile = shallowRef<File | null>(null);
   const paperPreview = shallowRef("");
-  const paperText = shallowRef("");
   const retainPdf = shallowRef(false);
   const draftSaved = shallowRef("");
   const recovered = shallowRef(false);
@@ -44,7 +43,11 @@ export function useImporter(existing?: Note | null) {
     try {
       if (role === "paper" && !file.name.toLowerCase().endsWith(".pdf"))
         throw new Error("论文原文请选择 PDF 文件。");
-      const parsed: ParsedDocument = await parseDocument(file, draft.value.id);
+      const parsed: ParsedDocument = await parseDocument(
+        file,
+        draft.value.id,
+        role === "note",
+      );
       if (role === "note") {
         noteFile.value = file;
         originalText.value = parsed.text;
@@ -74,7 +77,6 @@ export function useImporter(existing?: Note | null) {
         ];
       } else {
         paperFile.value = file;
-        paperText.value = parsed.text;
         if (previousUrl) URL.revokeObjectURL(previousUrl);
         previousUrl = URL.createObjectURL(file);
         paperPreview.value = previousUrl;
@@ -244,7 +246,6 @@ export function useImporter(existing?: Note | null) {
     noteFile,
     paperFile,
     paperPreview,
-    paperText,
     retainPdf,
     draftSaved,
     recovered,

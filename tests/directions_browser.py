@@ -37,7 +37,7 @@ def submit(page):
     expect(page.get_by_role('heading',name='我的提交',exact=True)).to_be_visible()
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(channel='msedge',headless=True)
+    browser=p.chromium.launch(channel=os.environ.get('TEST_BROWSER_CHANNEL', 'msedge') or None,headless=True)
     try:
         ctx=browser.new_context(viewport={'width':1440,'height':1100});ctx.route('**/api/**',fixture)
         page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))

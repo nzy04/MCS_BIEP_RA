@@ -23,14 +23,31 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
     ...options,
+    signal:
+      options?.signal ||
+      AbortSignal.timeout(
+        options?.method && options.method !== "GET" ? 60_000 : 20_000,
+      ),
+  }).catch(() => {
+    throw new ApiError(
+      503,
+      "连接中断，请刷新核对保存结果后重试。正在编辑的草稿仍保留。",
+    );
   });
-  const body = await response
-    .json()
-    .catch(() => ({ error: "服务暂时不可用，请稍后重试。" }));
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ApiError(
+      response.ok ? 502 : response.status,
+      "服务返回了无效数据，请稍后重试。",
+    );
+  }
   if (!response.ok)
     throw new ApiError(
       response.status,
-      body.error || `请求失败 (${response.status})`,
+      (typeof body?.error === "string" && body.error) ||
+        `请求失败 (${response.status})`,
     );
   return body;
 }

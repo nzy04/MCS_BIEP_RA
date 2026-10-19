@@ -1,4 +1,4 @@
-# Paper Commons
+# MCS_BIEP 论文库
 
 论文与阅读笔记管理网站，支持 GitHub 登录、文件导入、图文编辑、协作笔记和审核发布。
 
@@ -12,6 +12,7 @@
 - 笔记提交后在「我的提交」查看审核结果，通过后公开归档。
 - 缺少论文 PDF 附件或下载链接时，确认提交后在后台自动检索补充链接；优先使用公开接口，搜索仅作兜底。无法可靠匹配时反馈原因。
 - 详细操作见网站「使用指南」。
+- 邀请组员、备份、故障处理和容量限制见 [维护说明](MAINTENANCE.md)。
 
 ## 本地运行
 
@@ -30,6 +31,7 @@ pnpm dev
 
 ```sh
 pnpm test
+pnpm audit --audit-level high
 pnpm build
 pnpm exec wrangler deploy
 ```
@@ -39,3 +41,5 @@ pnpm exec wrangler deploy
 笔记原始数据保存在 `data/notes/<笔记ID>.json`，总目录为 `data/library.json`，研究方向为 `data/directions.json`。GitHub 阅读版按方向分别保存在 `papers/方向-<方向名称>/<笔记ID>.md`，每个方向有独立 README。多选方向生成多份阅读版，共用同一份笔记数据与附件；未分类笔记放在 `papers/_未分类/`。方向名称中的斜线等路径字符自动转义。
 
 发布、移动和修改昵称会在一次 Git 提交中同步数据、目录及阅读版，并清理已移出的旧阅读版。附件保存在 `assets/uploads/`，移动时无需复制。组员有仓库写权限即可整理任意笔记的分类，正文修改仍只限本人。请通过网站维护这些内容。
+
+源码变更会运行单元测试、真实 SQLite 队列测试及浏览器工作流；正式数据变更会单独检查索引、阅读版和附件完整性。测试论文只放在 `tests/fixtures/`，不随网站展示。

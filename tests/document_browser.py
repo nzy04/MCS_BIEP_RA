@@ -29,7 +29,7 @@ def demo(route):
     elif path=='session':route.fulfill(status=401,json={'error':'Not signed in'})
     else:route.fulfill(status=404,json={'error':'not configured'})
 with sync_playwright() as p:
-    browser=p.chromium.launch(channel='msedge',headless=True)
+    browser=p.chromium.launch(channel=os.environ.get('TEST_BROWSER_CHANNEL', 'msedge') or None,headless=True)
     context=browser.new_context(viewport={'width':1440,'height':1100});context.route('**/api/**',demo)
     page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     def start(files,paper=None):
@@ -74,6 +74,18 @@ with sync_playwright() as p:
     results.append('390px mobile editor has no horizontal document overflow')
     start([OUT/'note.md']);page.get_by_role('button',name='查看发布预览',exact=True).click();page.get_by_role('button',name='确认保存到本机',exact=True).click();expect(page.get_by_role('alert')).to_contain_text('图片尚未绑定')
     results.append('unbound Markdown images block publication with an actionable error')
+    scanned=OUT/'scanned-paper.pdf';scan=canvas.Canvas(str(scanned));scan.rect(40,40,200,200,fill=1);scan.save()
+    page.goto(BASE+'#import');page.reload();page.wait_for_load_state('networkidle')
+    page.get_by_test_id('note-file').set_input_files(str(OUT/'note.zip'));page.get_by_text('已解析，可继续整理',exact=True).wait_for()
+    page.get_by_test_id('paper-file').set_input_files(str(scanned))
+    expect(page.get_by_text('论文原文已读取。它不会自动替代你的阅读笔记。',exact=True)).to_be_visible()
+    results.append('scanned original paper can accompany independent written notes; OCR is required only for note text extraction')
+    bomb=OUT/'oversized-expanded.docx'
+    with zipfile.ZipFile(bomb,'w',compression=zipfile.ZIP_DEFLATED) as z:z.writestr('word/document.xml',b' '*(31*1024*1024))
+    page.goto(BASE+'#import');page.reload();page.wait_for_load_state('networkidle')
+    page.get_by_test_id('note-file').set_input_files(str(bomb))
+    expect(page.get_by_role('alert')).to_contain_text('展开后超过 30 MB')
+    results.append('oversized compressed Word expansion rejected before document parsing')
     assert not errors,errors
     browser.close()
 (OUT/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(results,ensure_ascii=False))

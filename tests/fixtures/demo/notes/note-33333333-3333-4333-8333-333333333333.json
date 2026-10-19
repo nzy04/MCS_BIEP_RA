@@ -1,0 +1,29 @@
+{
+  "id": "note-33333333-3333-4333-8333-333333333333",
+  "title": "SOTOPIA: Interactive Evaluation for Social Intelligence in Language Agents",
+  "subtitle": "用交互情境观察智能体的社会能力",
+  "year": "2024",
+  "venue": "ICLR",
+  "tags": ["多智能体", "社会智能"],
+  "paperUrl": "https://arxiv.org/abs/2310.11667",
+  "codeUrl": "https://sotopia.world",
+  "author": "示例 · 林同学",
+  "authorLogin": "demo",
+  "createdAt": "2026-10-16T03:00:00Z",
+  "updatedAt": "2026-10-16T03:00:00Z",
+  "revision": "",
+  "excerpt": "这是一份演示笔记，用来展示论文信息、阅读理解与待讨论问题如何一起保存。",
+  "readingDepth": "概览",
+  "demo": true,
+  "sections": {
+    "summary": "这是一份演示笔记，用来展示论文信息、阅读理解与待讨论问题如何一起保存。",
+    "problem": "这份内容用于体验网站阅读流程。正式使用时，请替换为有原文依据的组内笔记。",
+    "method": "",
+    "evidence": "",
+    "limitations": "尚未在本示例中记录具体实验，不据此评价论文效果。",
+    "insights": "可以在组会讨论：任务表现、角色设定与评估标准应如何区分。",
+    "original": ""
+  },
+  "assets": [],
+  "sourceNames": []
+}

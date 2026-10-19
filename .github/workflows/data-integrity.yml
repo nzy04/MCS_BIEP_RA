@@ -1,0 +1,17 @@
+name: Repository data integrity
+on:
+  push:
+    branches: [main]
+    paths: ["data/**", "papers/**", "assets/uploads/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: node scripts/check-repository.mjs

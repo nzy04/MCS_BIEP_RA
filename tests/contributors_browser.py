@@ -63,7 +63,7 @@ def fixture(route):
 
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(channel="msedge", headless=True)
+    browser = p.chromium.launch(channel=os.environ.get("TEST_BROWSER_CHANNEL", "msedge") or None, headless=True)
     try:
         ctx = browser.new_context(viewport={"width": 1440, "height": 1100}, accept_downloads=True)
         ctx.route("**/api/**", fixture)
@@ -177,6 +177,15 @@ with sync_playwright() as p:
         expect(guest.locator(".note-preview")).to_contain_text("bob的独立内容")
         expect(guest.get_by_role("button", name="编辑笔记", exact=True)).to_have_count(0)
         results.append("guest can select and read each contributor note without an account")
+        blocked_ctx = browser.new_context()
+        blocked_ctx.route("**/api/**", fixture)
+        blocked_ctx.add_init_script("Object.defineProperty(window, 'indexedDB', {get() { throw new Error('storage disabled for test'); }});")
+        blocked = blocked_ctx.new_page()
+        blocked.goto(base_url)
+        expect(blocked.locator('.paper-card')).to_have_count(2)
+        blocked.locator('.note-option').filter(has_text='@bob').click()
+        expect(blocked.locator('.note-preview')).to_contain_text('bob的独立内容')
+        results.append('public library and note reading remain usable when browser local storage is disabled')
         assert not errors, errors
         results.append("no desktop browser runtime errors")
     finally:

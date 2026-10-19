@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, Github, CheckCircle2, ExternalLink } from "lucide-vue-next";
+import { X, Github, CheckCircle2 } from "lucide-vue-next";
 defineEmits<{ close: [] }>();
 </script>
 <template>

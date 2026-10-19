@@ -20,9 +20,14 @@ base_url=os.environ.get('TEST_BASE_URL','http://127.0.0.1:5188/')
 def demo_config(route):
     route.fulfill(json={'title':'MCS_BIEP','configured':False,'authConfigured':False,'repository':'','branch':'main'})
 with sync_playwright() as p:
-    browser=p.chromium.launch(channel='msedge',headless=True)
+    browser=p.chromium.launch(channel=os.environ.get('TEST_BROWSER_CHANNEL', 'msedge') or None,headless=True)
     ctx=browser.new_context(viewport={'width':1440,'height':1100},device_scale_factor=1)
     ctx.route('**/api/config',demo_config)
+    def demo_data(route):
+        resource=route.request.url.split('/data/',1)[1].split('?',1)[0]
+        fixture=pathlib.Path('tests/fixtures/demo')/resource
+        route.fulfill(body=fixture.read_text(encoding='utf-8'),content_type='application/json')
+    ctx.route('**/data/**',demo_data)
     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto(base_url);page.wait_for_load_state('networkidle');page.locator('.paper-card').first.wait_for()
     assert page.locator('.paper-card').count()==3
@@ -40,10 +45,17 @@ with sync_playwright() as p:
     assert page.locator('.source-panel .note-body img').first.evaluate('(img)=>img.complete && img.naturalWidth>0')
     page.screenshot(path=str(out/'desktop-editor.png'),full_page=False)
     page.get_by_role('button',name='查看发布预览',exact=True).click();page.get_by_role('button',name='确认保存到本机',exact=True).click();page.get_by_text('这篇笔记仅保存在此浏览器').wait_for();page.reload();page.wait_for_load_state('networkidle');assert '导入验收笔记' in page.locator('main').inner_text();results.append('DOCX: headings, text, image, edit, save and reload persistence passed')
+    stored_assets=page.evaluate("""async () => {
+      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('paper-commons-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+      const notes=await new Promise((resolve,reject)=>{const r=db.transaction('records').objectStore('records').get('local-notes');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+      db.close();return notes[0].assets.map(a=>({size:a.size,dataUrl:a.dataUrl}));
+    }""")
+    assert all(a['size']==len(base64.b64decode(a['dataUrl'].split(',')[1])) for a in stored_assets)
+    results.append('Word image metadata matches exact upload bytes, including base64 padding')
     page.get_by_role('button',name='返回论文库',exact=True).click();assert page.locator('.paper-card').count()==4
     page.get_by_role('button',name='上传笔记',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'sample.pdf'));page.get_by_text('已解析，可继续整理').wait_for(timeout=45000);page.get_by_role('button',name='继续整理',exact=True).click();assert 'importer must preserve' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text();assert '中文笔记也应当正确提取' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text();results.append('PDF: actual English and Chinese text extraction passed')
     page.get_by_role('button',name='返回导入',exact=True).click();page.get_by_test_id('note-file').set_input_files(str(out/'scan.pdf'));page.get_by_role('alert').wait_for();assert '扫描件' in page.get_by_role('alert').inner_text();results.append('scan-only PDF rejected with clear OCR limitation')
-    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile_context.route('**/api/config',demo_config);mobile=mobile_context.new_page();mobile.goto(base_url);mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
+    mobile_context=browser.new_context(viewport={'width':390,'height':844});mobile_context.route('**/api/config',demo_config);mobile_context.route('**/data/**',demo_data);mobile=mobile_context.new_page();mobile.goto(base_url);mobile.wait_for_load_state('networkidle');mobile.locator('.paper-card').first.wait_for();assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth');mobile.screenshot(path=str(out/'mobile-library.png'),full_page=True);results.append('mobile: 390px no horizontal overflow')
     auth_context=browser.new_context();expired={'value':False}
     def auth_fixture(route):
         path=route.request.url.split('/api/',1)[1]

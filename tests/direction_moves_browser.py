@@ -37,7 +37,7 @@ def fixture(route):
     else: route.fulfill(status=404,json={'error':'Unknown fixture '+path})
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(channel='msedge',headless=True)
+    browser=p.chromium.launch(channel=os.environ.get('TEST_BROWSER_CHANNEL', 'msedge') or None,headless=True)
     try:
         context=browser.new_context(viewport={'width':1440,'height':1100});context.route('**/api/**',fixture)
         page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))

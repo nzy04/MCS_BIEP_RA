@@ -8,6 +8,10 @@ export default defineConfig({
       name: "bundle-pdf-character-maps",
       closeBundle() {
         mkdirSync("dist/pdf", { recursive: true });
+        for (const folder of ["wasm", "iccs"])
+          cpSync(`node_modules/pdfjs-dist/${folder}`, `dist/pdf/${folder}`, {
+            recursive: true,
+          });
         cpSync("node_modules/pdfjs-dist/cmaps", "dist/pdf/cmaps", {
           recursive: true,
         });

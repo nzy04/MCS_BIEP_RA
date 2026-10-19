@@ -10,6 +10,7 @@ import {
 } from "../shared/note";
 import { noteBody, importBody, readingTemplate } from "../shared/document";
 import { handle, seal, unseal, commitNote, type Env } from "../worker/index";
+import { validateIncoming } from "../worker/app";
 const env: Env = {
   ASSETS: { fetch: async () => new Response("site") },
   SITE_TITLE: "MCS_BIEP",
@@ -362,5 +363,78 @@ test("更新笔记时只移除该笔记已不再使用的附件", async () => {
   assert.deepEqual(
     git.read().pendingFiles.filter((f: any) => f.sha === null),
     [{ path, mode: "100644", type: "blob", sha: null }],
+  );
+});
+
+import { readRepositoryJson } from "../worker/profile";
+
+test("目录超过 GitHub 内联大小限制时按同一不可变 ref 读取 raw JSON", async () => {
+  const content = {
+    version: 1,
+    notes: Array.from({ length: 1200 }, (_, i) => ({
+      id: `note-${i}`,
+      excerpt: "长期使用的阅读笔记摘要".repeat(50),
+    })),
+  };
+  let calls = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    calls++;
+    assert.equal(
+      new URL(String(input)).searchParams.get("ref"),
+      "immutable-head",
+    );
+    const accept = new Headers(init?.headers).get("Accept");
+    return new Response(
+      JSON.stringify(
+        accept === "application/vnd.github.raw+json"
+          ? content
+          : { encoding: "none", content: "", size: 1500000 },
+      ),
+    );
+  };
+  assert.deepEqual(
+    await readRepositoryJson(
+      env,
+      user,
+      "data/library.json",
+      "immutable-head",
+      { notes: [] },
+      fetcher,
+    ),
+    content,
+  );
+  assert.equal(calls, 2);
+});
+
+test("畸形附件元数据、重复路径和伪造大小在进入审核前被拒绝", () => {
+  const n = note();
+  for (const asset of [
+    null,
+    { path: `assets/uploads/${n.id}/x.png`, mime: "image/png", size: NaN },
+    { path: `assets/uploads/${n.id}/x.png`, mime: "image/png", size: 3 },
+  ]) {
+    const assets =
+      asset && Number.isNaN(asset.size)
+        ? []
+        : [
+            {
+              path: `assets/uploads/${n.id}/x.png`,
+              mime: "image/png",
+              base64: "iVBORw0KGgo=",
+            },
+          ];
+    assert.throws(
+      () => validateIncoming({ note: { ...n, assets: [asset] }, assets }),
+      /附件/,
+    );
+  }
+  const a = {
+    path: `assets/uploads/${n.id}/x.png`,
+    mime: "image/png",
+    size: 8,
+  };
+  assert.throws(
+    () => validateIncoming({ note: { ...n, assets: [a, a] }, assets: [] }),
+    /重复/,
   );
 });

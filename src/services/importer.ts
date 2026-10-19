@@ -1,6 +1,7 @@
 import type { NoteAsset } from "../../shared/note";
 import DOMPurify from "dompurify";
 import { htmlToMarkdown } from "./htmlToMarkdown";
+import { validateDocumentArchive } from "./archive";
 export interface ParsedDocument {
   text: string;
   assets: NoteAsset[];
@@ -11,6 +12,7 @@ const maxFileSize = 15 * 1024 * 1024;
 export async function parseDocument(
   file: File,
   noteId: string,
+  requireText = true,
 ): Promise<ParsedDocument> {
   if (file.size > maxFileSize)
     throw new Error("初版支持 15 MB 以内的文件，请先压缩或拆分。");
@@ -25,11 +27,13 @@ export async function parseDocument(
     return { text, assets: [], warnings: [] };
   }
   if (extension === "docx") {
+    const buffer = await file.arrayBuffer();
+    validateDocumentArchive(new Uint8Array(buffer));
     const { default: mammoth } = await import("mammoth/mammoth.browser");
     const assets: NoteAsset[] = [];
     const warnings: string[] = [];
     const result = await mammoth.convertToHtml(
-      { arrayBuffer: await file.arrayBuffer() },
+      { arrayBuffer: buffer },
       {
         styleMap: [
           "p[style-name='Title'] => h1:fresh",
@@ -62,7 +66,9 @@ export async function parseDocument(
             assets.push({
               path,
               mime: image.contentType,
-              size: Math.ceil(base64.length * 0.75),
+              size:
+                (base64.length * 3) / 4 -
+                (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0),
               dataUrl: `data:${image.contentType};base64,${base64}`,
             });
             return { src: path };
@@ -86,9 +92,15 @@ export async function parseDocument(
       "pdfjs-dist/build/pdf.worker.min.mjs?url"
     );
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    const pdf = await pdfjs.getDocument({
+    const loadingTask = pdfjs.getDocument({
       data: new Uint8Array(await file.arrayBuffer()),
       useSystemFonts: true,
+      wasmUrl: import.meta.env.DEV
+        ? "/node_modules/pdfjs-dist/wasm/"
+        : "/pdf/wasm/",
+      iccUrl: import.meta.env.DEV
+        ? "/node_modules/pdfjs-dist/iccs/"
+        : "/pdf/iccs/",
       cMapUrl: import.meta.env.DEV
         ? "/node_modules/pdfjs-dist/cmaps/"
         : "/pdf/cmaps/",
@@ -96,10 +108,13 @@ export async function parseDocument(
       standardFontDataUrl: import.meta.env.DEV
         ? "/node_modules/pdfjs-dist/standard_fonts/"
         : "/pdf/standard_fonts/",
-    }).promise;
+    });
     try {
+      const pdf = await loadingTask.promise;
       if (pdf.numPages > 100)
         throw new Error("初版支持 100 页以内的 PDF，请先拆分文件。");
+      if (!requireText)
+        return { text: "", assets: [], warnings: [], pages: pdf.numPages };
       const pages: string[] = [];
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -130,7 +145,7 @@ export async function parseDocument(
         pages: pdf.numPages,
       };
     } finally {
-      await pdf.destroy();
+      await loadingTask.destroy();
     }
   }
   throw new Error("暂支持 PDF、DOCX、Markdown 和 TXT。");

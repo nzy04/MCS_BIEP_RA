@@ -83,6 +83,19 @@ function repository(
     const url = new URL(String(input)),
       path = url.pathname;
     const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (path === "/graphql") {
+      const repository: Record<string, { text: string } | null> = {};
+      for (const match of body.query.matchAll(
+        /n(\d+): object\(expression: ("(?:\\.|[^"])*")\)/g,
+      )) {
+        const expression = JSON.parse(match[2]);
+        const separator = expression.indexOf(":");
+        const snapshot = snapshots.get(expression.slice(0, separator)) || files;
+        const text = snapshot.get(expression.slice(separator + 1));
+        repository[`n${match[1]}`] = text ? { text } : null;
+      }
+      return reply({ data: { repository } });
+    }
     if (path === "/repos/group/papers")
       return reply({ permissions: { push: options.writable !== false } });
     if (path.includes("/git/ref/heads/")) {
@@ -358,6 +371,10 @@ test("方向路径安全且稳定，多方向发布生成独立阅读版并正�
     { path: `assets/uploads/${a.id}/figure.png`, mime: "image/png", size: 3 },
   ];
   const repo = repository();
+  a.assets[0].size = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+    "base64",
+  ).length;
   const saved = await commitNote(
     env,
     alice,
@@ -538,4 +555,27 @@ test("移动接口验证来源、会话、输入及目标方向", async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("历史笔记增多后改名仍在免费请求预算内完成全部同步", async () => {
+  const originals = Array.from({ length: 80 }, () => ({
+    ...makeNote(),
+    tags: ["共同方向"],
+  }));
+  const repo = repository(originals);
+  let requests = 0;
+  const bounded: typeof fetch = async (input, init) => {
+    if (++requests > 50)
+      throw new Error("free plan subrequest budget exceeded");
+    return repo.fetcher(input, init);
+  };
+  const result = await updateProfile(env, alice, "长期署名", bounded);
+  assert.equal(result.notes.length, 80);
+  assert.ok(result.notes.every((n) => n.author === "长期署名"));
+  assert.ok(requests < 30);
+  for (const n of originals)
+    assert.match(
+      repo.files.get(`${directionFolder("共同方向")}/${n.id}.md`)!,
+      /长期署名/,
+    );
 });

@@ -264,9 +264,9 @@ test("免费定位失败才调用一次搜索，找不到唯一来源时不再�
     throw new Error("unexpected chat request");
   });
   assert.equal(result.approved, false);
-  assert.equal(calls.filter(u=>u.includes("api.crossref.org")).length, 2);
-  assert.equal(calls.filter(u=>u.includes("export.arxiv.org")).length, 1);
-  assert.equal(calls.filter(u=>u.includes("tools/search")).length, 1);
+  assert.equal(calls.filter((u) => u.includes("api.crossref.org")).length, 2);
+  assert.equal(calls.filter((u) => u.includes("export.arxiv.org")).length, 1);
+  assert.equal(calls.filter((u) => u.includes("tools/search")).length, 1);
   assert.equal(result.issues[0]?.field, "paperUrl");
   assert.equal(academicUrl("https://arxiv.org.evil.test/abs/123"), false);
   assert.equal(academicUrl("https://arxiv.org@evil.test/abs/123"), false);
@@ -378,7 +378,15 @@ class MemoryStorage implements QueueStorage {
     this.alarm = time;
   }
   async transaction<T>(fn: (s: QueueStorage) => Promise<T>) {
-    return fn(this);
+    const snapshot = structuredClone(this.data),
+      alarm = this.alarm;
+    try {
+      return await fn(this);
+    } catch (error) {
+      this.data = snapshot;
+      this.alarm = alarm;
+      throw error;
+    }
   }
 }
 function fixture(
@@ -580,5 +588,32 @@ test("共享密钥缺失时旧发布入口不能绕过审核，匿名任务查�
   assert.equal(
     (await handle(new Request("https://site.test/api/reviews"), env)).status,
     401,
+  );
+});
+
+test("入队存储失败不会留下孤立审核任务或消耗额度，同内容可以恢复提交", async () => {
+  const f = fixture(),
+    n = note(),
+    original = f.storage.put.bind(f.storage);
+  let failed = false;
+  f.storage.put = async (key: any, value?: any) => {
+    if (
+      !failed &&
+      typeof key === "object" &&
+      Object.keys(key).some((k) => k.startsWith("payload:"))
+    ) {
+      failed = true;
+      throw new Error("simulated storage failure");
+    }
+    return original(key, value);
+  };
+  assert.equal((await f.submit(n)).status, 500);
+  assert.equal((await f.storage.list({ prefix: "job:" })).size, 0);
+  assert.equal((await f.storage.list({ prefix: "usage:" })).size, 0);
+  assert.equal((await f.submit(n)).status, 202);
+  await f.queue.alarm();
+  assert.equal(
+    ((await (await f.call("list")).json()) as any).jobs[0].status,
+    "published",
   );
 });
