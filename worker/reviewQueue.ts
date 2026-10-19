@@ -39,10 +39,6 @@ interface Payload {
   user: Identity;
   value: Submission;
 }
-interface Usage {
-  total: number;
-  members: Record<string, number>;
-}
 interface Dependencies {
   authorize: typeof assertWriteAccess;
   tags: typeof repositoryTags;
@@ -59,10 +55,6 @@ const json = (body: unknown, status = 200) =>
     },
   });
 const DAY = 86_400_000;
-const limit = (value: string | undefined, fallback: number) => {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? Math.min(n, 500) : fallback;
-};
 const summary = ({
   owner,
   payloadExpires,
@@ -153,25 +145,6 @@ export class ReviewQueue {
         await this.state.storage.setAlarm(time);
     }
   }
-  private async countSubmission(user: Identity) {
-    const key = `usage:${new Date().toISOString().slice(0, 10)}`;
-    const usage = (await this.state.storage.get<Usage>(key)) || {
-      total: 0,
-      members: {},
-    };
-    if (
-      usage.total >= limit(this.env.REVIEW_DAILY_LIMIT, 50) ||
-      (usage.members[String(user.id)] || 0) >=
-        limit(this.env.REVIEW_USER_DAILY_LIMIT, 10)
-    )
-      throw new HttpError(
-        429,
-        "审核额度已用完，额度在每天北京时间 08:00 重置。",
-      );
-    usage.total++;
-    usage.members[String(user.id)] = (usage.members[String(user.id)] || 0) + 1;
-    return { key, usage };
-  }
   private async enqueue(user: Identity, value: Submission) {
     const fingerprint = JSON.stringify({
       owner: user.id,
@@ -215,8 +188,7 @@ export class ReviewQueue {
       )
     )
       throw new HttpError(409, "这篇笔记正在审核，请等待结果后再提交修改。");
-    const usage = await this.countSubmission(user),
-      now = Date.now();
+    const now = Date.now();
     const job: Job = {
       id,
       owner: user.id,
@@ -237,7 +209,7 @@ export class ReviewQueue {
         { user, value } satisfies Payload,
         storage,
       );
-      await storage.put({ [`job:${id}`]: job, [usage.key]: usage.usage });
+      await storage.put(`job:${id}`, job);
       const alarm = await storage.getAlarm();
       if (alarm === null || alarm > now + 1000)
         await storage.setAlarm(now + 1000);
@@ -368,7 +340,6 @@ export class ReviewQueue {
                 410,
                 "服务器草稿已到期，请从本机草稿重新提交。",
               );
-            const usage = await this.countSubmission(user);
             current.status = current.approved ? "publishing" : "queued";
             current.message = "";
             current.updatedAt = new Date().toISOString();
@@ -378,10 +349,7 @@ export class ReviewQueue {
                 { ...payload, user },
                 storage,
               );
-              await storage.put({
-                [`job:${current.id}`]: current,
-                [usage.key]: usage.usage,
-              });
+              await storage.put(`job:${current.id}`, current);
               const alarm = await storage.getAlarm();
               if (alarm === null || alarm > Date.now() + 1000)
                 await storage.setAlarm(Date.now() + 1000);
@@ -511,10 +479,10 @@ export class ReviewQueue {
       }
       if (job.expires <= now) await this.state.storage.delete(`job:${job.id}`);
     }
+    // Remove counters left by deployments with daily quotas.
     for (const key of (
       await this.state.storage.list({ prefix: "usage:" })
     ).keys())
-      if (key.slice(6) < new Date(now - DAY).toISOString().slice(0, 10))
-        await this.state.storage.delete(key);
+      await this.state.storage.delete(key);
   }
 }

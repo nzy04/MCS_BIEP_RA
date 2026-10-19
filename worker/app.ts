@@ -37,8 +37,6 @@ export interface Env {
   SESSION_SECRET: string;
   DEEPSEEK_API_KEY?: string;
   DEEPSEEK_MODEL?: string;
-  REVIEW_DAILY_LIMIT?: string;
-  REVIEW_USER_DAILY_LIMIT?: string;
   REVIEW_QUEUE?: ReviewQueueNamespace;
 }
 export interface Identity extends Session {

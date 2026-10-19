@@ -26,8 +26,6 @@
   "vars": {
     "SITE_TITLE": "MCS_BIEP",
     "DEEPSEEK_MODEL": "deepseek-flash",
-    "REVIEW_DAILY_LIMIT": "50",
-    "REVIEW_USER_DAILY_LIMIT": "10",
     "GITHUB_BRANCH": "main",
   },
 }

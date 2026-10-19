@@ -16,6 +16,9 @@ const settings = {
     GITHUB_BRANCH: "main",
     SESSION_SECRET: "only-a-test-session-key-with-32-characters",
     DEEPSEEK_API_KEY: "only-a-test-api-key",
+    // Existing dashboard variables must no longer impose daily quotas.
+    REVIEW_DAILY_LIMIT: "1",
+    REVIEW_USER_DAILY_LIMIT: "1",
   },
   outboundService: async (request) => {
     const url = new URL(request.url);
@@ -116,14 +119,14 @@ async function stub(instance) {
   const ns = await instance.getDurableObjectNamespace("REVIEW_QUEUE");
   return ns.get(ns.idFromName("runtime-review"));
 }
-async function call(target, action) {
+async function call(target, action, submission = note) {
   return target.fetch("https://review.internal/", {
     method: "POST",
     body: JSON.stringify({
       action,
       user: person,
       ...(action === "submit"
-        ? { value: { note, assets: [], baseRevision: "" } }
+        ? { value: { note: submission, assets: [], baseRevision: "" } }
         : {}),
     }),
   });
@@ -158,6 +161,24 @@ try {
     body: JSON.stringify({ action: "detail", user: person, id: job.id }),
   });
   assert.equal((await detail.json()).note.body, "待补充");
+  for (let i = 0; i < 51; i++) {
+    const extra = await call(target, "submit", {
+      ...note,
+      id: `note-${crypto.randomUUID()}`,
+    });
+    assert.equal(
+      extra.status,
+      202,
+      `Submission ${i + 2}: ${await extra.text()}`,
+    );
+  }
+  await mf.dispose();
+  mf = new Miniflare(runtimeSettings);
+  target = await stub(mf);
+  assert.equal((await (await call(target, "list")).json()).jobs.length, 52);
+  assert.equal((await call(target, "submit")).status, 200);
+  assert.equal(modelCalls, 0);
+  assert.equal(gitWrites, 0);
   console.log(
     JSON.stringify({
       sqlitePersistence: true,
@@ -166,6 +187,9 @@ try {
       gitWrites,
       status: job.status,
       placeholderFeedbackWithoutModelCharge: true,
+      dailySubmissionQuotaRemoved: true,
+      submissionsPersisted: 52,
+      duplicateSubmissionReused: true,
     }),
   );
 } finally {

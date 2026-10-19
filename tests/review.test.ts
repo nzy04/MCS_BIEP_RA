@@ -493,6 +493,7 @@ class MemoryStorage implements QueueStorage {
 }
 function fixture(
   overrides: Partial<ConstructorParameters<typeof ReviewQueue>[2]> = {},
+  queueEnv: Env = env,
 ) {
   const storage = new MemoryStorage();
   let mutation = Promise.resolve();
@@ -538,7 +539,7 @@ function fixture(
     },
     ...overrides,
   };
-  const queue = new ReviewQueue(state, env, deps);
+  const queue = new ReviewQueue(state, queueEnv, deps);
   const call = async (
     action: string,
     data: Record<string, unknown> = {},
@@ -618,14 +619,13 @@ test("未通过不会写仓库，其他成员无法查看任务或原文", async
     [],
   );
 });
-test("待修改提交仅本人可删除，草稿与候选内容清理且已用额度保留", async () => {
+test("待修改提交仅本人可删除，草稿与候选内容清理后可重新提交", async () => {
   const f = fixture({
     review: async (n) => ({ approved: false, note: n, issues: [] }),
   });
   const n = note();
   const { job } = (await (await f.submit(n)).json()) as any;
   await f.queue.alarm();
-  const usage = [...(await f.storage.list({ prefix: "usage:" }))];
   assert.ok((await f.storage.list({ prefix: `payload:${job.id}:` })).size);
   assert.ok((await f.storage.list({ prefix: `candidate:${job.id}:` })).size);
   assert.equal(
@@ -647,14 +647,10 @@ test("待修改提交仅本人可删除，草稿与候选内容清理且已用�
     (await f.storage.list({ prefix: `candidate:${job.id}:` })).size,
     0,
   );
-  assert.deepEqual([...(await f.storage.list({ prefix: "usage:" }))], usage);
   assert.equal(f.counts().commits, 0);
-  // A new explicit submission can reuse the content hash, but consumes a new quota.
+  // Deleting the completed task allows a new explicit submission of the same content.
   assert.equal((await f.submit(n)).status, 202);
-  assert.equal(
-    [...(await f.storage.list<any>({ prefix: "usage:" }))][0][1].total,
-    2,
-  );
+  assert.equal((await f.storage.list({ prefix: "usage:" })).size, 0);
 });
 
 test("审核中提交禁止删除，已发布或失败的提交可删除且不改仓库", async () => {
@@ -746,6 +742,10 @@ test("发布失败的明确重试复用已通过审核，服务重启不重复�
     "failed",
   );
   assert.equal(f.counts().reviews, 1);
+  await f.storage.put(`usage:${new Date().toISOString().slice(0, 10)}`, {
+    total: 500,
+    members: { [user.id]: 500 },
+  });
   assert.equal((await f.call("retry", { id: job.id })).status, 202);
   await new ReviewQueue(f.state, env, f.deps).alarm();
   assert.equal(f.counts().reviews, 1);
@@ -771,18 +771,52 @@ test("不确定是否已付费的中断任务不会自动重复请求，过期�
     0,
   );
 });
-test("并发重复提交只占一个额度，每日限额不能被重试绕过", async () => {
+test("并发重复提交只建一个任务，不重复调用模型或写入仓库", async () => {
   const f = fixture(),
     n = note();
   const results = await Promise.all([f.submit(n), f.submit(n)]);
   assert.equal(results[0].status, 202);
   assert.equal(results[1].status, 202);
+  assert.equal(
+    ((await results[0].json()) as any).job.id,
+    ((await results[1].json()) as any).job.id,
+  );
   assert.equal((await f.storage.list({ prefix: "job:" })).size, 1);
-  const usage = [...f.storage.data.values()].find((v) => v?.total === 1);
-  usage.total = 50;
-  const denied = await f.submit(note());
-  assert.equal(denied.status, 429);
-  assert.equal(f.counts().reviews, 0);
+  assert.equal(
+    (await f.submit({ ...n, body: "修改后的实际阅读笔记。" })).status,
+    409,
+  );
+  await f.queue.alarm();
+  assert.equal((await f.submit(n)).status, 200);
+  await f.queue.alarm();
+  assert.deepEqual(f.counts(), { reviews: 1, commits: 1 });
+});
+
+test("同一成员可提交超过旧个人及全组每日上限，旧配置和计数不再阻止提交", async () => {
+  const legacyEnv = {
+    ...env,
+    REVIEW_DAILY_LIMIT: "1",
+    REVIEW_USER_DAILY_LIMIT: "1",
+  };
+  const f = fixture({}, legacyEnv);
+  await f.storage.put(`usage:${new Date().toISOString().slice(0, 10)}`, {
+    total: 500,
+    members: { [user.id]: 500 },
+  });
+  for (let i = 0; i < 51; i++) {
+    const response = await f.submit(note());
+    assert.equal(
+      response.status,
+      202,
+      `Submission ${i + 1}: ${await response.text()}`,
+    );
+  }
+  assert.equal((await f.storage.list({ prefix: "job:" })).size, 51);
+  assert.deepEqual(f.counts(), { reviews: 0, commits: 0 });
+  await new ReviewQueue(f.state, legacyEnv, f.deps).alarm();
+  assert.deepEqual(f.counts(), { reviews: 1, commits: 1 });
+  assert.equal((await f.storage.list({ prefix: "job:" })).size, 51);
+  assert.equal((await f.storage.list({ prefix: "usage:" })).size, 0);
 });
 test("共享密钥缺失时旧发布入口不能绕过审核，匿名任务查询受保护", async () => {
   const cookie = `mcs_session=${await seal(user, env.SESSION_SECRET)}`;
@@ -802,7 +836,7 @@ test("共享密钥缺失时旧发布入口不能绕过审核，匿名任务查�
   );
 });
 
-test("入队存储失败不会留下孤立审核任务或消耗额度，同内容可以恢复提交", async () => {
+test("入队存储失败不会留下孤立任务或调用模型，同内容可以恢复提交", async () => {
   const f = fixture(),
     n = note(),
     original = f.storage.put.bind(f.storage);
@@ -821,6 +855,7 @@ test("入队存储失败不会留下孤立审核任务或消耗额度，同内�
   assert.equal((await f.submit(n)).status, 500);
   assert.equal((await f.storage.list({ prefix: "job:" })).size, 0);
   assert.equal((await f.storage.list({ prefix: "usage:" })).size, 0);
+  assert.deepEqual(f.counts(), { reviews: 0, commits: 0 });
   assert.equal((await f.submit(n)).status, 202);
   await f.queue.alarm();
   assert.equal(
