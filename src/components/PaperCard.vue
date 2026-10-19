@@ -85,9 +85,10 @@ defineEmits<{
         ><a
           v-if="note.pdfUrl"
           :href="note.pdfUrl"
+          title="在原始网站打开，论文库仅保存链接"
           target="_blank"
           rel="noopener"
-          >PDF</a
+          >PDF 外链</a
         ><a
           v-if="note.codeUrl"
           :href="note.codeUrl"

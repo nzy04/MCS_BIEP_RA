@@ -118,9 +118,10 @@ async function downloadPackage() {
           v-if="note.pdfUrl"
           class="resource-link"
           :href="note.pdfUrl"
+          title="在原始网站打开，论文库仅保存链接"
           target="_blank"
           rel="noopener"
-          ><Download :size="17" />论文 PDF <span>↗</span></a
+          ><ExternalLink :size="17" />PDF 外链 <span>↗</span></a
         ><a
           v-if="note.codeUrl"
           class="resource-link"

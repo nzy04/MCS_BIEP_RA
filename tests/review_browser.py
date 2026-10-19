@@ -100,7 +100,7 @@ with sync_playwright() as p:
     page.get_by_role('heading', name='World Models', exact=True).wait_for()
     assert original_insights in page.locator('.note-body').inner_text()
     assert page.locator('.review-receipt').count() == 1
-    assert page.get_by_role('link', name='论文 PDF').get_attribute('href') == pdf_url
+    assert page.get_by_role('link', name='PDF 外链').get_attribute('href') == pdf_url
     page.locator('.review-receipt summary').click()
     assert page.locator('.ai-badge').count()==0
     assert '自动补充' not in page.locator('.review-receipt').inner_text()

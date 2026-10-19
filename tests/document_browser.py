@@ -85,7 +85,7 @@ with sync_playwright() as p:
     page.get_by_role('button',name='查看发布预览',exact=True).click()
     expect(page.get_by_text('保存 PDF 附件',exact=False)).to_have_count(0)
     page.get_by_role('button',name='确认保存到本机',exact=True).click()
-    expect(page.get_by_role('link',name='论文 PDF')).to_have_attribute('href','https://arxiv.org/pdf/1803.10122')
+    expect(page.get_by_role('link',name='PDF 外链')).to_have_attribute('href','https://arxiv.org/pdf/1803.10122')
     with page.expect_download() as download:page.get_by_role('button',name='导出笔记包',exact=True).click()
     download.value.save_as(str(OUT/'link-only.zip'))
     with zipfile.ZipFile(OUT/'link-only.zip') as z:
