@@ -40,7 +40,7 @@ with sync_playwright() as p:
     assert '真实导入' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
     assert '结构化章节' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
     assert '我的备注' in page.get_by_role('textbox',name='笔记正文',exact=True).inner_text()
-    page.locator('.metadata-panel > summary').click();page.get_by_label('分享人',exact=True).fill('验收成员');page.get_by_role('button',name='新建研究方向',exact=True).click();page.get_by_label('新研究方向',exact=True).fill('导入验收');page.get_by_role('button',name='创建方向',exact=True).click();page.get_by_role('checkbox',name='世界模型',exact=True).check()
+    page.locator('.metadata-panel > summary').click();page.get_by_label('分享人',exact=True).fill('验收成员');page.get_by_role('button',name='新建研究方向',exact=True).click();page.get_by_role('menuitem',name='新建研究方向',exact=True).click();page.get_by_label('新研究方向',exact=True).fill('导入验收');page.get_by_role('button',name='创建方向',exact=True).click();page.get_by_role('checkbox',name='世界模型',exact=True).check()
     page.get_by_role('button',name='预览',exact=True).click();assert page.locator('.source-panel .note-body img').count()==1
     assert page.locator('.source-panel .note-body img').first.evaluate('(img)=>img.complete && img.naturalWidth>0')
     page.screenshot(path=str(out/'desktop-editor.png'),full_page=False)

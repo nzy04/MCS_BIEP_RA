@@ -8,7 +8,26 @@ export type ReviewStatus =
 export interface ReviewIssue {
   field: string;
   message: string;
+  quote?: string;
 }
+export const reviewFieldLabel = (field: string) =>
+  (
+    ({
+      title: "标题",
+      paperUrl: "论文链接",
+      pdfUrl: "PDF 下载链接",
+      year: "发表年份",
+      venue: "会议 / 期刊",
+      tags: "研究方向",
+      summary: "总结",
+      problem: "研究问题",
+      method: "方法与贡献",
+      evidence: "实验与证据",
+      limitations: "局限与疑问",
+      insights: "个人理解",
+      original: "笔记正文",
+    }) as Record<string, string>
+  )[field] || "笔记正文";
 export interface ReviewSource {
   title: string;
   url: string;

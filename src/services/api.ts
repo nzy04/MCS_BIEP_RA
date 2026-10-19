@@ -120,6 +120,15 @@ export async function loadNote(id: string, connected: boolean): Promise<Note> {
       : `/data/notes/${encodeURIComponent(id)}.json`,
   );
 }
+export function deleteNote(
+  note: Pick<NoteSummary, "id" | "revision">,
+): Promise<{ notes: NoteSummary[]; commitUrl: string }> {
+  return api(`/api/notes/${encodeURIComponent(note.id)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: note.revision }),
+  });
+}
 export async function publishNote(
   note: Note,
   baseRevision: string,

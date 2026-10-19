@@ -17,6 +17,7 @@ import {
 } from "../worker/app";
 import { profileSession, updateProfile } from "../worker/profile";
 import { moveNotes } from "../worker/move";
+import { deleteNote } from "../worker/deleteNote";
 import { changeDirection, createDirection } from "../worker/directions";
 import {
   directionFolder,
@@ -558,6 +559,55 @@ test("移动接口验证来源、会话、输入及目标方向", async () => {
   }
 });
 
+test("编辑正文保留可信 AI 字段标记，手动改字段后移除标记", async () => {
+  const a = makeNote();
+  a.year = "2018";
+  const repo = repository();
+  const receipt = {
+    policyVersion: "test",
+    reviewedAt: "2026-10-19",
+    model: "test",
+    directions: [],
+    sources: [{ title: a.title, url: a.paperUrl, kind: "provided" as const }],
+    supplements: [
+      { field: "year" as const, value: "2018", sourceUrl: a.paperUrl },
+    ],
+  };
+  const saved = await commitNote(
+    env,
+    alice,
+    { note: a, assets: [] },
+    repo.fetcher,
+    receipt,
+  );
+  const edited = await commitNote(
+    env,
+    alice,
+    {
+      note: { ...saved.note, body: "这是新的个人理解。" },
+      assets: [],
+      baseRevision: saved.note.revision,
+    },
+    repo.fetcher,
+    { ...receipt, supplements: [] },
+  );
+  assert.equal(edited.note.review?.supplements[0].field, "year");
+  assert.deepEqual(repo.index()[0].aiFields, ["year"]);
+  const manual = await commitNote(
+    env,
+    alice,
+    {
+      note: { ...edited.note, year: "2019" },
+      assets: [],
+      baseRevision: edited.note.revision,
+    },
+    repo.fetcher,
+    { ...receipt, supplements: [] },
+  );
+  assert.deepEqual(manual.note.review?.supplements, []);
+  assert.deepEqual(repo.index()[0].aiFields, []);
+});
+
 test("历史笔记增多后改名仍在免费请求预算内完成全部同步", async () => {
   const originals = Array.from({ length: 80 }, () => ({
     ...makeNote(),
@@ -579,6 +629,130 @@ test("历史笔记增多后改名仍在免费请求预算内完成全部同步",
       repo.files.get(`${directionFolder("共同方向")}/${n.id}.md`)!,
       /长期署名/,
     );
+});
+
+test("只有上传者能删除笔记，原子清理索引、阅读版及本人图片，保留同论文其他作者", async () => {
+  const a = { ...makeNote(), tags: ["共同方向"] },
+    b = { ...makeNote(bob), tags: ["共同方向"] };
+  a.assets = [
+    { path: `assets/uploads/${a.id}/image.png`, mime: "image/png", size: 3 },
+  ];
+  const repo = repository([a, b]);
+  repo.files.set(a.assets[0].path, "IMG");
+  repo.files.set(`${directionFolder("共同方向")}/${a.id}.md`, toMarkdown(a));
+  repo.files.set(`${directionFolder("共同方向")}/${b.id}.md`, toMarkdown(b));
+  const before = new Map(repo.files);
+  await assert.rejects(
+    () => deleteNote(env, bob, a.id, a.revision, repo.fetcher),
+    /只有上传者/,
+  );
+  await assert.rejects(
+    () => deleteNote(env, alice, a.id, "stale-version", repo.fetcher),
+    /已有更新/,
+  );
+  assert.deepEqual(repo.files, before);
+  assert.equal(repo.patches(), 0);
+  const result = await deleteNote(env, alice, a.id, a.revision, repo.fetcher);
+  assert.equal(result.notes.length, 1);
+  assert.equal(result.notes[0].id, b.id);
+  assert.ok(!repo.files.has(`data/notes/${a.id}.json`));
+  assert.ok(!repo.files.has(`papers/${a.id}.md`));
+  assert.ok(!repo.files.has(`${directionFolder("共同方向")}/${a.id}.md`));
+  assert.ok(!repo.files.has(a.assets[0].path));
+  assert.equal(
+    repo.files.get(`data/notes/${b.id}.json`),
+    before.get(`data/notes/${b.id}.json`),
+  );
+  assert.ok(
+    repo.files.get(`${directionFolder("共同方向")}/README.md`)!.includes(b.id),
+  );
+  assert.ok(
+    !repo.files.get(`${directionFolder("共同方向")}/README.md`)!.includes(a.id),
+  );
+  await deleteNote(env, alice, a.id, a.revision, repo.fetcher);
+  assert.equal(repo.patches(), 1);
+});
+
+test("删除笔记遇到并发发布会保留新增内容，缺失文件不提交半套删除", async () => {
+  const a = makeNote(),
+    repo = repository([a], { conflict: true });
+  const result = await deleteNote(env, alice, a.id, a.revision, repo.fetcher);
+  assert.equal(repo.patches(), 2);
+  assert.equal(result.notes.length, 1);
+  assert.equal(result.notes[0].authorLogin, "bob");
+  const broken = repository([a], { missing: `data/notes/${a.id}.json` });
+  await assert.rejects(
+    () => deleteNote(env, alice, a.id, a.revision, broken.fetcher),
+    /不一致/,
+  );
+  assert.equal(broken.patches(), 0);
+});
+
+test("笔记删除接口拒绝未登录、跨站、伪造归属和缺少版本的请求", async () => {
+  const a = makeNote(),
+    repo = repository([a]),
+    previous = globalThis.fetch;
+  globalThis.fetch = repo.fetcher;
+  const request = (origin: string, cookie: string, body: string) =>
+    new Request(`https://site.test/api/notes/${a.id}`, {
+      method: "DELETE",
+      headers: { Origin: origin, Cookie: cookie },
+      body,
+    });
+  try {
+    const auth = `mcs_session=${await seal(alice, env.SESSION_SECRET)}`;
+    const other = `mcs_session=${await seal(bob, env.SESSION_SECRET)}`;
+    assert.equal(
+      (await handle(request("https://evil.test", auth, "{}"), env)).status,
+      403,
+    );
+    assert.equal(
+      (await handle(request("https://site.test", "", "{}"), env)).status,
+      401,
+    );
+    assert.equal(
+      (await handle(request("https://site.test", auth, "bad json"), env))
+        .status,
+      400,
+    );
+    assert.equal(
+      (await handle(request("https://site.test", auth, "{}"), env)).status,
+      400,
+    );
+    assert.equal(
+      (
+        await handle(
+          request(
+            "https://site.test",
+            other,
+            JSON.stringify({
+              revision: a.revision,
+              authorLogin: "alice",
+              authorId: 1,
+            }),
+          ),
+          env,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(repo.patches(), 0);
+    assert.equal(
+      (
+        await handle(
+          request(
+            "https://site.test",
+            auth,
+            JSON.stringify({ revision: a.revision }),
+          ),
+          env,
+        )
+      ).status,
+      200,
+    );
+  } finally {
+    globalThis.fetch = previous;
+  }
 });
 
 test("重命名方向原子更新多人笔记、目录和阅读版，保留正文、其他方向、图片与 PDF 链接", async () => {

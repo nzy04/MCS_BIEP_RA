@@ -1,4 +1,4 @@
-import type { ReviewReceipt } from "./review";
+import type { ReviewReceipt, ReviewSupplement } from "./review";
 
 import { noteBody, meaningfulBody, githubBody } from "./document";
 
@@ -115,6 +115,7 @@ export interface NoteSummary {
   readingDepth: string;
   local?: boolean;
   demo?: boolean;
+  aiFields?: ReviewSupplement["field"][];
 }
 export interface Note extends NoteSummary {
   /** Full Markdown document. Absent in legacy notes, whose sections remain readable. */
@@ -176,10 +177,18 @@ export function createNote(): Note {
   };
 }
 export function summarize(note: Note): NoteSummary {
-  const { body, sections, assets, sourceNames, review, ...entry } = note;
+  const { body, sections, assets, sourceNames, review, aiFields, ...entry } =
+    note;
 
   return {
     ...entry,
+    ...(review
+      ? {
+          aiFields: review.supplements
+            .filter((s) => s.value === note[s.field])
+            .map((s) => s.field),
+        }
+      : {}),
     excerpt: (
       body ??
       (sections.summary || sections.problem || sections.original)
@@ -254,7 +263,12 @@ export function toMarkdown(note: Note, rootPrefix = "../"): string {
     .join("\n");
 
   const reviewText = note.review
-    ? `\n\n## 审核与资料补充\n\n研究方向：${note.review.directions.join("、")}\n\n${note.review.supplements.map((s) => `- 自动补充 ${s.field}：${s.value}（来源：${s.sourceUrl}）`).join("\n")}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`
+    ? `\n\n## 参考来源\n\n${note.review.supplements
+        .filter((s) => s.value === note[s.field])
+        .map((s) => `- ${s.value} <kbd>AI</kbd>`)
+        .join(
+          "\n",
+        )}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`
     : "";
   return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${githubBody(noteBody(note), rootPrefix)}${reviewText}\n`;
 }

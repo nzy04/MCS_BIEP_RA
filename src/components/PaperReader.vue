@@ -10,6 +10,8 @@ import { computed } from "vue";
 import type { Note, NoteSummary, Session } from "../../shared/note";
 import { ownsNote } from "../../shared/papers";
 import NotePreview from "./NotePreview.vue";
+import AiBadge from "./AiBadge.vue";
+import { aiSupplement } from "../../shared/ai";
 
 import { exportNotePackage } from "../services/notePackage";
 import { shallowRef } from "vue";
@@ -33,6 +35,7 @@ defineEmits<{
   edit: [note: Note];
   open: [id: string];
   contribute: [note: Note];
+  context: [event: MouseEvent, note: NoteSummary];
 }>();
 
 async function downloadPackage() {
@@ -91,7 +94,10 @@ async function downloadPackage() {
       示例笔记，用于体验阅读与编辑流程，内容可替换。
     </div>
     <div class="reader-layout">
-      <section class="reader-paper">
+      <section
+        class="reader-paper"
+        @contextmenu="$emit('context', $event, note)"
+      >
         <NotePreview :note="note" :asset-base="assetBase" />
       </section>
       <aside class="reader-aside">
@@ -100,6 +106,7 @@ async function downloadPackage() {
           :notes="notes"
           :current-id="note.id"
           @open="$emit('open', $event)"
+          @context="(event, note) => $emit('context', event, note)"
         />
         <h3>论文资源</h3>
         <a
@@ -108,14 +115,16 @@ async function downloadPackage() {
           :href="note.paperUrl"
           target="_blank"
           rel="noopener"
-          ><ExternalLink :size="17" />论文原文 <span>↗</span></a
+          ><ExternalLink :size="17" />论文原文
+          <AiBadge v-if="aiSupplement(note, 'paperUrl')" /><span>↗</span></a
         ><a
           v-if="note.pdfUrl"
           class="resource-link"
           :href="note.pdfUrl"
           target="_blank"
           rel="noopener"
-          ><Download :size="17" />论文 PDF <span>↗</span></a
+          ><Download :size="17" />论文 PDF
+          <AiBadge v-if="aiSupplement(note, 'pdfUrl')" /><span>↗</span></a
         ><a
           v-if="note.codeUrl"
           class="resource-link"

@@ -2,7 +2,6 @@
 import { computed, shallowRef } from "vue";
 import { directionKey } from "../../shared/directions";
 import { Folder } from "lucide-vue-next";
-import DirectionCreateForm from "./DirectionCreateForm.vue";
 const selected = defineModel<string | null>({ required: true });
 const props = defineProps<{
   directions: string[];
@@ -10,11 +9,13 @@ const props = defineProps<{
   total: number;
   unclassified: number;
   canCreate: boolean;
-  create: (name: string) => Promise<string>;
   dragging: boolean;
   busy: boolean;
 }>();
-const emit = defineEmits<{ drop: [target: string]; manage: [] }>();
+const emit = defineEmits<{
+  drop: [target: string];
+  context: [event: MouseEvent, name: string | null];
+}>();
 const over = shallowRef<string | null>(null);
 const query = shallowRef("");
 const filtered = computed(() =>
@@ -29,8 +30,23 @@ function drop(event: DragEvent, tag: string) {
 }
 </script>
 <template>
-  <aside class="topics" aria-label="研究方向">
-    <h2 class="sidebar-heading">研究方向</h2>
+  <aside
+    class="topics"
+    aria-label="研究方向"
+    @contextmenu="$emit('context', $event, null)"
+  >
+    <h2 class="sidebar-heading">
+      研究方向
+      <button
+        v-if="canCreate"
+        class="touch-menu"
+        type="button"
+        aria-label="研究方向操作"
+        @click="$emit('context', $event, null)"
+      >
+        ⋯
+      </button>
+    </h2>
     <input
       v-model="query"
       class="direction-search"
@@ -63,6 +79,7 @@ function drop(event: DragEvent, tag: string) {
       :aria-pressed="selected === tag"
       :disabled="busy"
       @click="selected = tag"
+      @contextmenu.stop="$emit('context', $event, tag)"
       @dragover="dragging && ($event.preventDefault(), (over = tag))"
       @dragleave="over = null"
       @drop="dragging && drop($event, tag)"
@@ -70,26 +87,25 @@ function drop(event: DragEvent, tag: string) {
       <span class="direction-name"><Folder :size="14" />{{ tag }}</span
       ><span>{{ counts.get(tag) || 0 }}</span>
     </button>
-    <DirectionCreateForm
-      :create="create"
-      :can-create="canCreate"
-      @created="selected = $event"
-    />
-    <button
-      v-if="canCreate"
-      type="button"
-      class="text-link"
-      :disabled="busy"
-      @click="$emit('manage')"
-    >
-      管理研究方向
-    </button>
     <p v-if="dragging || busy" class="move-hint" role="status">
       {{ busy ? "正在同步目录…" : "拖到目标方向以移动" }}
     </p>
   </aside>
 </template>
 <style scoped>
+.touch-menu {
+  display: none;
+}
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@media (max-width: 720px), (hover: none) {
+  .touch-menu {
+    display: inline-flex;
+  }
+}
 .direction-search {
   width: 100%;
   min-width: 0;

@@ -14,7 +14,12 @@ import {
 import { unpackNotePackage } from "../services/notePackage";
 import { parseDocument, type ParsedDocument } from "../services/importer";
 import { getRecord, setRecord, removeRecord } from "../services/storage";
-export function useImporter(existing?: Note | null) {
+import type { ReviewIssue } from "../../shared/review";
+export function useImporter(
+  existing?: Note | null,
+  initialIssues: ReviewIssue[] = [],
+) {
+  const reviewIssues = ref<ReviewIssue[]>(initialIssues);
   const draft = ref<Note>(
     existing ? JSON.parse(JSON.stringify(existing)) : createNote(),
   );
@@ -175,13 +180,16 @@ export function useImporter(existing?: Note | null) {
     return note;
   }
   async function recover() {
-    const saved = await getRecord<{ draft: Note; originalText: string }>(
-      "draft",
-    );
+    const saved = await getRecord<{
+      draft: Note;
+      originalText: string;
+      issues?: ReviewIssue[];
+    }>("draft");
     if (saved) {
       draft.value = saved.draft;
       baseRevision.value = saved.draft.revision;
       originalText.value = saved.originalText;
+      reviewIssues.value = saved.issues || [];
       step.value = 2;
       recovered.value = true;
     }
@@ -191,7 +199,7 @@ export function useImporter(existing?: Note | null) {
     draftSaved.value = "";
   }
   watch(
-    [draft, originalText],
+    [draft, originalText, reviewIssues],
     () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
@@ -199,6 +207,7 @@ export function useImporter(existing?: Note | null) {
           await setRecord("draft", {
             draft: draft.value,
             originalText: originalText.value,
+            issues: reviewIssues.value,
           });
           draftSaved.value = "草稿已保存在本机";
         } catch {
@@ -214,6 +223,7 @@ export function useImporter(existing?: Note | null) {
   });
   return {
     draft,
+    reviewIssues,
     baseRevision,
     step,
     busy,

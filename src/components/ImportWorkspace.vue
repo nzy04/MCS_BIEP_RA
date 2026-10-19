@@ -30,6 +30,7 @@ import { useImporter } from "../composables/useImporter";
 import { getRecord } from "../services/storage";
 import TemplateEditor from "./TemplateEditor.vue";
 import NotePreview from "./NotePreview.vue";
+import type { ReviewIssue } from "../../shared/review";
 const props = defineProps<{
   existing: Note | null;
   config: SiteConfig;
@@ -38,12 +39,18 @@ const props = defineProps<{
   save: (note: Note, remote: boolean, baseRevision: string) => Promise<string>;
   directions: string[];
   canCreateDirection: boolean;
-  createDirection: (name: string) => Promise<string>;
+  issues: ReviewIssue[];
   lastDirectionChange: DirectionChange | null;
+  newDirection: { name: string } | null;
 }>();
-const emit = defineEmits<{ back: []; login: []; manageDirections: [] }>();
+const emit = defineEmits<{
+  back: [];
+  login: [];
+  directionContext: [event: MouseEvent, name: string | null];
+}>();
 const {
   draft,
+  reviewIssues,
   baseRevision,
   step,
   busy,
@@ -62,7 +69,18 @@ const {
   preparedNote,
   recover,
   clearDraft,
-} = useImporter(props.existing);
+} = useImporter(props.existing, props.issues);
+watch(
+  () => props.newDirection,
+  (value) => {
+    if (
+      value &&
+      !draft.value.tags.includes(value.name) &&
+      draft.value.tags.length < 8
+    )
+      draft.value.tags.push(value.name);
+  },
+);
 watch(
   () => props.lastDirectionChange,
   (change) => {
@@ -259,14 +277,16 @@ async function downloadPackage() {
           <TemplateEditor
             :directions="directions"
             :can-create-direction="canCreateDirection"
-            :create-direction="createDirection"
+            :issues="reviewIssues"
             v-model="draft"
             :author-locked="!!user"
             :asset-base="assetBase"
             :paper-file="paperFile"
             :add-image="addImage"
             @remove-asset="removeAsset"
-            @manage-directions="$emit('manageDirections')"
+            @direction-context="
+              (event, name) => $emit('directionContext', event, name)
+            "
           />
         </section>
         <aside class="source-panel">

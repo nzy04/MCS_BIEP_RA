@@ -18,6 +18,7 @@ import {
 } from "./directions";
 import { layoutEntries } from "./layout";
 import { moveNotes } from "./move";
+import { deleteNote } from "./deleteNote";
 import {
   directionName,
   directionKey,
@@ -496,6 +497,25 @@ export async function commitNote(
             409,
             "原笔记内容缺失，本次修改未保存，请联系维护者。",
           );
+        if (note.review && old.review) {
+          const inherited = old.review.supplements.filter(
+            (s) =>
+              s.value === note[s.field] &&
+              !note.review!.supplements.some((n) => n.field === s.field),
+          );
+          note.review = {
+            ...note.review,
+            supplements: [...note.review.supplements, ...inherited],
+            sources: [
+              ...note.review.sources,
+              ...old.review.sources.filter(
+                (s) =>
+                  inherited.some((i) => i.sourceUrl === s.url) &&
+                  !note.review!.sources.some((n) => n.url === s.url),
+              ),
+            ],
+          };
+        }
         for (const a of old.assets ?? []) {
           if (
             typeof a.path === "string" &&
@@ -922,6 +942,20 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return json(await moveNotes(env, user, value));
     }
     const noteMatch = path.match(/^\/api\/notes\/(note-[a-f0-9-]{36})$/);
+    if (noteMatch && request.method === "DELETE") {
+      requireOrigin(request);
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub。");
+      const raw = await request.text();
+      if (raw.length > 1024) throw new HttpError(413, "删除请求过长。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "删除请求格式不正确。");
+      }
+      return json(await deleteNote(env, user, noteMatch[1], value?.revision));
+    }
     if (noteMatch && request.method === "GET") {
       if (!configured(env)) throw new HttpError(404, "仓库尚未配置。");
       return await readPublic(env, `data/notes/${noteMatch[1]}.json`);

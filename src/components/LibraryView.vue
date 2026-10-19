@@ -19,23 +19,30 @@ const props = defineProps<{
   loading: boolean;
   directions: string[];
   canCreateDirection: boolean;
-  createDirection: (name: string) => Promise<string>;
   canMove: boolean;
   moveNotes: (request: MoveNotesRequest) => Promise<void>;
   lastDirectionChange: DirectionChange | null;
+  newDirection: { name: string } | null;
 }>();
 defineEmits<{
   open: [id: string];
   create: [direction?: string];
   refresh: [];
   setup: [];
-  manageDirections: [];
+  directionContext: [event: MouseEvent, name: string | null];
+  noteContext: [event: MouseEvent, note: NoteSummary];
 }>();
 const query = shallowRef("");
 const selectedTag = shallowRef<string | null>(null);
 const sort = shallowRef("recent");
 const layout = shallowRef("list");
 const moves = useLibraryMoves(props.moveNotes);
+watch(
+  () => props.newDirection,
+  (value) => {
+    if (value) selectedTag.value = value.name;
+  },
+);
 function movable(notes: NoteSummary[]) {
   return notes.every((n) => n.local || props.canMove);
 }
@@ -129,11 +136,10 @@ function resetFilters() {
         :total="papers.length"
         :unclassified="unclassified"
         :can-create="canCreateDirection"
-        :create="createDirection"
         :dragging="!!moves.dragging.value.length"
         :busy="moves.busy.value"
         @drop="moves.drop"
-        @manage="$emit('manageDirections')"
+        @context="(event, name) => $emit('directionContext', event, name)"
       />
       <section class="library-results" aria-label="文献列表">
         <LibraryToolbar
@@ -210,6 +216,7 @@ function resetFilters() {
             @drag-end="moves.end"
             @move="moves.choose($event, selectedTag || null)"
             @open="$emit('open', $event)"
+            @context="(event, note) => $emit('noteContext', event, note)"
           />
         </div>
         <div v-if="!config.configured" class="demo-notice">

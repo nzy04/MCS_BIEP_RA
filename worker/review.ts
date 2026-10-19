@@ -359,7 +359,8 @@ const SYSTEM_PROMPT = `你是课题组论文阅读笔记审核员。只输出 JS
 检查：准确论文标题/来源、研究问题、方法与贡献、本人具体理解；精读或复现还需实验依据。拒绝空泛占位、明显矛盾、只粘贴论文摘要、未体现本人阅读理解的内容。不要因研究主题新而拒绝。
 研究方向不是固定分类表。directionMode为manual时，directions原样返回selectedDirections，不要新增、替换或纠正用户自定义的文件夹名称。directionMode为automatic时，依据论文内容生成1至3个简短研究方向，优先复用existingDirections中的合适名称，必要时自定义新名称，不要把其他方向当成允许列表。
 如果原始笔记中存在模板章节内容，只能从用户原文逐字提取到空章节，不能改写已有章节，不能代写“我的思考”。不确定时退回修改。
-输出结构：{"approved":false,"issues":[{"field":"insights","message":"请补充你对方法的判断和理由"}],"directions":[],"extractions":[{"section":"problem","text":"原始笔记中逐字出现的研究问题段落"}]}。automatic模式必须给出1至3个方向；manual模式保持用户原选项。
+每条退回反馈必须具体指出缺少或错误的内容，以及如何修改，不能只说“不符合要求”或“待修改”。已有文字有问题时，在quote中逐字引用原文中有问题的短句（最多300字）；缺少内容时quote留空，不编造待修改原文。
+输出结构：{"approved":false,"issues":[{"field":"insights","message":"请补充你对方法的判断和理由，例如适用条件以及你据此作出判断的依据","quote":""}],"directions":[],"extractions":[{"section":"problem","text":"原始笔记中逐字出现的研究问题段落"}]}。automatic模式必须给出1至3个方向；manual模式保持用户原选项。
 approved必须是布尔值；issues为数组，通过时为空；extractions可为空；field只能是title,paperUrl,year,venue,tags,summary,problem,method,evidence,limitations,insights,original。`;
 export async function reviewSubmission(
   input: Note,
@@ -577,7 +578,20 @@ export async function reviewSubmission(
       i.message.length > 500
     )
       throw new Error("审核反馈格式不正确，未发布笔记。");
-    return { field: i.field, message: i.message };
+    const quote =
+      typeof i.quote === "string" &&
+      i.quote.length <= 300 &&
+      i.quote.trim() &&
+      [
+        noteBody(input),
+        input.title,
+        input.paperUrl,
+        input.year,
+        input.venue,
+      ].some((value) => value?.includes(i.quote))
+        ? i.quote
+        : undefined;
+    return { field: i.field, message: i.message, ...(quote ? { quote } : {}) };
   });
   const corpus = noteBody(input);
   if (!Array.isArray(result.extractions) || result.extractions.length > 7)

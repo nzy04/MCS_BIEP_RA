@@ -59,6 +59,29 @@ function model(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test("退回反馈保留可定位的真实原句，丢弃模型编造的引文", async () => {
+  const n = note();
+  const quote = n.sections.insights.slice(0, 16);
+  const result = await reviewSubmission(n, env, [], async () =>
+    chat(
+      model({
+        approved: false,
+        issues: [
+          { field: "insights", message: "请补充判断依据与适用条件", quote },
+          {
+            field: "method",
+            message: "补充状态预测模块",
+            quote: "这句话不在原文中",
+          },
+        ],
+      }),
+    ),
+  );
+  assert.equal(result.approved, false);
+  assert.equal(result.issues[0].quote, quote);
+  assert.equal(result.issues[1].quote, undefined);
+});
+
 test("手动选择的自定义文件夹完全保留，模型不能追加或改写", async () => {
   const n = note();
   n.tags = ["我的课题 / 子方向", "A"];

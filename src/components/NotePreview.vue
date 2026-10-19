@@ -3,6 +3,8 @@ import { computed, shallowRef } from "vue";
 import ImageLightbox from "./ImageLightbox.vue";
 import type { Note } from "../../shared/note";
 import ReviewReceipt from "./ReviewReceipt.vue";
+import AiBadge from "./AiBadge.vue";
+import { aiSupplement } from "../../shared/ai";
 import { renderedNote } from "../services/markdown";
 const props = defineProps<{ note: Note; assetBase?: string }>();
 // Only the sanitized output of the controlled Markdown renderer is inserted.
@@ -16,8 +18,10 @@ function openImage(event: MouseEvent) {
 <template>
   <article class="note-preview">
     <div v-if="note.venue || note.year" class="preview-kicker">
-      {{ note.venue }}
-      <span v-if="note.year">/ {{ note.year }}</span>
+      {{ note.venue }}<AiBadge v-if="aiSupplement(note, 'venue')" />
+      <span v-if="note.year"
+        >/ {{ note.year }}<AiBadge v-if="aiSupplement(note, 'year')"
+      /></span>
     </div>
     <h1>{{ note.title || "还没有填写标题" }}</h1>
     <p v-if="note.subtitle" class="note-subtitle">{{ note.subtitle }}</p>

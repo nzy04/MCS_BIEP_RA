@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { PaperGroup } from "../../shared/papers";
 import type { NoteSummary } from "../../shared/note";
 import NoteOptions from "./NoteOptions.vue";
+import AiBadge from "./AiBadge.vue";
 const props = defineProps<{ paper: PaperGroup; canMove?: boolean }>();
 const note = computed(() => props.paper.note);
 defineEmits<{
@@ -10,6 +11,7 @@ defineEmits<{
   move: [notes: NoteSummary[]];
   dragNotes: [event: DragEvent, notes: NoteSummary[]];
   dragEnd: [];
+  context: [event: MouseEvent, note: NoteSummary];
 }>();
 </script>
 <template>
@@ -19,15 +21,17 @@ defineEmits<{
     :draggable="!!canMove"
     @dragstart="canMove && $emit('dragNotes', $event, paper.notes)"
     @dragend="$emit('dragEnd')"
+    @contextmenu="$emit('context', $event, note)"
   >
     <div class="paper-entry">
       <div class="card-top">
         <span v-if="note.venue || note.year" class="venue-label"
           >{{ note.venue
-          }}<span v-if="note.year"
-            >{{ note.venue ? " · " : "" }}{{ note.year }}</span
-          ></span
-        >
+          }}<AiBadge v-if="note.aiFields?.includes('venue')" /><span
+            v-if="note.year"
+            >{{ note.venue ? " · " : "" }}{{ note.year
+            }}<AiBadge v-if="note.aiFields?.includes('year')" /></span
+        ></span>
         <span v-if="note.local" class="local-label">仅本机</span
         ><span v-else-if="note.demo" class="sample-label">示例</span
         ><span v-else class="reading-label">{{ note.readingDepth }}</span>
@@ -50,6 +54,7 @@ defineEmits<{
         @move="$emit('move', [$event])"
         @drag-note="(event, note) => $emit('dragNotes', event, [note])"
         @drag-end="$emit('dragEnd')"
+        @context="(event, note) => $emit('context', event, note)"
       />
     </div>
     <div class="card-side">

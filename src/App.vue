@@ -9,7 +9,9 @@ import SetupDialog from "./components/SetupDialog.vue";
 import ProfileDialog from "./components/ProfileDialog.vue";
 import ReviewJobsView from "./components/ReviewJobsView.vue";
 import GuideView from "./components/GuideView.vue";
-import DirectionManager from "./components/DirectionManager.vue";
+import ContextMenu from "./components/ContextMenu.vue";
+import DirectionActionDialog from "./components/DirectionActionDialog.vue";
+import DeleteNoteDialog from "./components/DeleteNoteDialog.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -31,15 +33,16 @@ const app = useWorkspace();
     :loading="app.loading.value"
     :directions="app.directions.options.value"
     :can-create-direction="app.directions.canCreate.value"
-    :create-direction="app.directions.create"
     :can-move="!!app.user.value?.canWrite"
     :move-notes="app.moveNotes"
     :last-direction-change="app.lastDirectionChange.value"
+    :new-direction="app.newDirection.value"
     @open="app.openNote"
     @create="app.beginImport(undefined, $event)"
     @refresh="app.refresh"
     @setup="app.setupOpen.value = true"
-    @manage-directions="app.directionManagerOpen.value = true"
+    @direction-context="app.directionContext"
+    @note-context="app.noteContext"
   /><GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
     v-else-if="app.view.value === 'reviews'"
     :jobs="app.reviews.jobs.value"
@@ -62,11 +65,12 @@ const app = useWorkspace();
     :save="app.save"
     :directions="app.directions.options.value"
     :can-create-direction="app.directions.canCreate.value"
-    :create-direction="app.directions.create"
+    :issues="app.editingIssues.value"
+    :new-direction="app.newDirection.value"
     :last-direction-change="app.lastDirectionChange.value"
     @back="app.navigate('library')"
     @login="app.login"
-    @manage-directions="app.directionManagerOpen.value = true"
+    @direction-context="app.directionContext"
   /><PaperReader
     v-else-if="app.selectedNote.value"
     :note="app.selectedNote.value"
@@ -77,6 +81,7 @@ const app = useWorkspace();
     @edit="app.beginImport"
     @open="app.openNote"
     @contribute="app.contribute"
+    @context="app.noteContext"
   />
   <div v-else class="page-container empty-state">正在读取笔记…</div>
   <SetupDialog
@@ -89,13 +94,30 @@ const app = useWorkspace();
     :save="app.saveProfile"
     @close="app.profileOpen.value = false"
   />
-  <DirectionManager
-    v-if="app.directionManagerOpen.value && app.directions.canCreate.value"
-    :directions="app.directions.options.value"
-    :notes="app.notes.value"
+  <ContextMenu
+    v-if="app.contextMenu.value"
+    :key="`${app.contextMenu.value.x}-${app.contextMenu.value.y}`"
+    v-bind="app.contextMenu.value"
+    @close="app.contextMenu.value = null"
+  />
+  <DirectionActionDialog
+    v-if="app.directionAction.value && app.directions.canCreate.value"
+    :action="app.directionAction.value"
+    :count="
+      app.notes.value.filter((n) =>
+        n.tags.includes(app.directionAction.value!.name),
+      ).length
+    "
     :create="app.directions.create"
     :change="app.changeDirection"
-    @close="app.directionManagerOpen.value = false"
+    @close="app.directionAction.value = null"
+    @created="app.newDirection.value = { name: $event }"
+  />
+  <DeleteNoteDialog
+    v-if="app.noteToDelete.value"
+    :note="app.noteToDelete.value"
+    :remove="app.deleteOwnNote"
+    @close="app.noteToDelete.value = null"
   />
   <div
     v-if="app.message.value"

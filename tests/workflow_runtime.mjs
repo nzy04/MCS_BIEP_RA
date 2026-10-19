@@ -384,6 +384,46 @@ try {
   assert.ok(files.has(`papers/_未分类/${first.id}.md`));
   assert.ok(!files.has("papers/方向-重命名方向/README.md"));
   assert.ok(Buffer.from(files.get(imagePath)).equals(image));
+  assert.equal(
+    (
+      await call(
+        `/api/notes/${first.id}`,
+        { revision: afterDelete.revision },
+        bobCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call(
+        `/api/notes/${first.id}`,
+        { revision: "stale" },
+        aliceCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    409,
+  );
+  const otherNoteBytes = files.get(`data/notes/${second.id}.json`);
+  assert.equal(
+    (
+      await call(
+        `/api/notes/${first.id}`,
+        { revision: afterDelete.revision },
+        aliceCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    200,
+  );
+  assert.ok(!files.has(`data/notes/${first.id}.json`));
+  assert.ok(!files.has(imagePath));
+  assert.equal(files.get(`data/notes/${second.id}.json`), otherNoteBytes);
   const baseline = JSON.stringify((await call("/api/library")).body);
   const soakSeconds = Math.min(
     600,
@@ -400,7 +440,7 @@ try {
     if (Date.now() < deadline) await new Promise((r) => setTimeout(r, 10000));
   } while (Date.now() < deadline);
   assert.equal(modelCalls, 3);
-  assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 2);
+  assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 1);
   const snapshot = path.join(persist, "repository-snapshot");
   for (const [relative, content] of files) {
     const target = path.resolve(snapshot, relative);
@@ -417,6 +457,7 @@ try {
     modelCalls,
     directionsAndMoves: true,
     directionRenameAndDelete: true,
+    authorOnlyNoteDeletion: true,
     nickname: true,
     multipleContributors: true,
     rejectionNoWrite: true,

@@ -61,19 +61,25 @@ with sync_playwright() as p:
     assert state['publish_calls'] == 1
     assert state['submitted'].get('pdfUrl', '') == ''
     page.screenshot(path=str(out / 'review-pending.png'), full_page=False)
-    state['jobs'][0].update(status='needs_changes', issues=[{'field': 'method', 'message': '请补充方法的关键模块和实现思路。'}], receipt=receipt)
+    state['jobs'][0].update(status='needs_changes', issues=[{'field': 'method', 'message': '请补充方法的关键模块和实现思路。'}, {'field':'insights','message':'请说明作出判断的依据和适用条件。','quote':original_insights},{'field':'year','message':'请核对论文的发表年份。'}], receipt=receipt)
     page.reload(); page.locator('.review-status', has_text='待修改').wait_for()
     assert '关键模块' in page.locator('.review-issues').inner_text()
     page.screenshot(path=str(out / 'review-feedback.png'), full_page=False)
     state['details'] = False
     page.get_by_role('button', name='修改笔记', exact=True).click()
     assert original_insights in page.get_by_role('textbox', name='笔记正文', exact=True).inner_text()
+    assert page.locator('.review-feedback li').count()==3
+    assert page.locator('.review-mark').inner_text()==original_insights
+    assert page.get_by_label('发表年份',exact=True).get_attribute('aria-invalid')=='true'
+    assert page.locator('.review-feedback').evaluate('(el)=>getComputedStyle(el).color')=='rgb(161, 37, 27)'
+    page.screenshot(path=str(out/'review-red-guidance.png'),full_page=True)
     page.get_by_role('button', name='Markdown', exact=True).click()
     page.get_by_label('Markdown 正文', exact=True).fill(body + '\n\n## 关键模块\n\n视觉编码器压缩图像，循环动态模型学习演化，控制器利用潜在状态决策。')
     page.get_by_role('button', name='查看发布预览', exact=True).click()
     page.get_by_role('button', name='确认发布到仓库', exact=True).click()
     page.locator('.review-status', has_text='审核中').wait_for()
     assert state['publish_calls'] == 2
+    assert 'review-mark' not in state['submitted']['body']
     state['published'] = {**state['submitted'], 'pdfUrl': pdf_url, 'tags': receipt['directions'], 'review': receipt, 'revision': 'approved-version', 'updatedAt': '2026-10-18T15:03:00Z'}
     state['jobs'][0].update(status='published', receipt=receipt, commitUrl='https://github.com/test-group/test-repo/commit/test')
     page.get_by_role('button', name='刷新', exact=True).click()
@@ -84,7 +90,9 @@ with sync_playwright() as p:
     assert page.locator('.review-receipt').count() == 1
     assert page.get_by_role('link', name='论文 PDF').get_attribute('href') == pdf_url
     page.locator('.review-receipt summary').click()
-    assert 'PDF 下载链接' in page.locator('.review-receipt').inner_text()
+    assert page.locator('.reader-aside .ai-badge').count()==1
+    assert '自动补充' not in page.locator('.review-receipt').inner_text()
+    assert '补充论文来源' not in page.locator('.review-receipt').inner_text()
     page.screenshot(path=str(out / 'pdf-background-result.png'), full_page=True)
     mobile = browser.new_context(viewport={'width': 390, 'height': 844})
     mobile.route('**/api/**', fixture)

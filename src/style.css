@@ -1875,3 +1875,24 @@ p {
     scroll-behavior: auto !important;
   }
 }
+/* Review feedback is a display-only annotation; it is never saved in note Markdown. */
+.review-mark {
+  color: #b42318;
+  background: #ffe6e2;
+  text-decoration: underline dotted #b42318;
+  text-underline-offset: 3px;
+}
+.review-section-mark {
+  border-left: 3px solid #b42318;
+  padding-left: 10px;
+  background: #fff6f5;
+}
+.has-review-issues .rich-document,
+.has-review-issues textarea {
+  outline: 1px solid #d69088;
+  outline-offset: 3px;
+}
+[aria-invalid="true"] {
+  border-color: #b42318 !important;
+  background-color: #fff6f5;
+}

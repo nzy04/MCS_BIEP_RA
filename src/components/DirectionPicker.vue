@@ -5,13 +5,11 @@ import {
   mergeDirections,
   MAX_NOTE_DIRECTIONS,
 } from "../../shared/directions";
-import DirectionCreateForm from "./DirectionCreateForm.vue";
-defineEmits<{ manage: [] }>();
+defineEmits<{ context: [event: MouseEvent, name: string | null] }>();
 const selected = defineModel<string[]>({ required: true });
 const props = defineProps<{
   options: string[];
   canCreate: boolean;
-  create: (name: string) => Promise<string>;
 }>();
 const options = computed(() => mergeDirections(props.options, selected.value));
 const query = shallowRef("");
@@ -31,13 +29,12 @@ function toggle(name: string, checked: boolean) {
       (n) => directionKey(n) !== directionKey(name),
     );
 }
-function created(name: string) {
-  if (!isSelected(name) && selected.value.length < MAX_NOTE_DIRECTIONS)
-    selected.value = [...selected.value, name];
-}
 </script>
 <template>
-  <fieldset class="direction-picker">
+  <fieldset
+    class="direction-picker"
+    @contextmenu="$emit('context', $event, null)"
+  >
     <legend>研究方向（可多选）</legend>
     <p class="direction-hint">
       选择已有方向，或新建自己的文件夹。最多选 {{ MAX_NOTE_DIRECTIONS }} 个。
@@ -50,7 +47,12 @@ function created(name: string) {
       placeholder="搜索已有方向"
     />
     <div v-if="options.length" class="direction-choices">
-      <label v-for="name in filtered" :key="name" class="direction-choice">
+      <label
+        v-for="name in filtered"
+        :key="name"
+        class="direction-choice"
+        @contextmenu.stop="$emit('context', $event, name)"
+      >
         <input
           type="checkbox"
           :checked="isSelected(name)"
@@ -65,18 +67,13 @@ function created(name: string) {
     <p v-else class="direction-hint">
       还没有研究方向，可以新建，也可以留空自动归类。
     </p>
-    <DirectionCreateForm
-      :create="create"
-      :can-create="canCreate"
-      @created="created"
-    />
     <button
       v-if="canCreate"
       type="button"
       class="text-link"
-      @click="$emit('manage')"
+      @click="$emit('context', $event, null)"
     >
-      管理研究方向
+      新建研究方向
     </button>
     <div class="direction-mode" role="status">
       <template v-if="selected.length"

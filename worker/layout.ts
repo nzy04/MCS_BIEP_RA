@@ -51,7 +51,11 @@ export async function layoutEntries(
   after: NoteSummary[],
   changed: Note[],
   fetcher: typeof fetch,
-  catalogChange?: DirectionCatalog & { removed?: string[]; touch?: string[] },
+  catalogChange?: Partial<DirectionCatalog> & {
+    removed?: string[];
+    touch?: string[];
+    deletedNotes?: Note[];
+  },
 ): Promise<TreeEntry[]> {
   const catalog = await readRepositoryJson<DirectionCatalog>(
     env,
@@ -74,7 +78,9 @@ export async function layoutEntries(
       JSON.stringify(
         {
           ...catalog,
-          ...(catalogChange ? { retired: catalogChange.retired } : {}),
+          ...(catalogChange && "retired" in catalogChange
+            ? { retired: catalogChange.retired }
+            : {}),
           version: 1,
           directions,
         },
@@ -87,6 +93,20 @@ export async function layoutEntries(
   for (const name of catalogChange?.touch || [])
     affected.add(directionFolder(name));
   const removed = new Set<string>();
+  for (const note of catalogChange?.deletedNotes || []) {
+    removed.add(`data/notes/${note.id}.json`);
+    removed.add(`papers/${note.id}.md`);
+    for (const folder of noteFolders(note.tags)) {
+      affected.add(folder);
+      removed.add(`${folder}/${note.id}.md`);
+    }
+    for (const asset of note.assets || [])
+      if (
+        asset.path.startsWith(`assets/uploads/${note.id}/`) &&
+        /^[-a-zA-Z0-9.]+$/.test(asset.path.split("/").pop()!)
+      )
+        removed.add(asset.path);
+  }
   for (const note of changed) {
     for (const folder of noteFolders(note.tags))
       entries.push(file(`${folder}/${note.id}.md`, toMarkdown(note, "../../")));

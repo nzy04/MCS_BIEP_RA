@@ -28,6 +28,8 @@ import { htmlToMarkdown } from "../services/htmlToMarkdown";
 import { renderedMarkdown } from "../services/markdown";
 import NoteAssetPanel from "./NoteAssetPanel.vue";
 import PdfFigureTool from "./PdfFigureTool.vue";
+import type { ReviewIssue } from "../../shared/review";
+import { reviewHighlightExtension } from "../services/reviewHighlights";
 
 const body = defineModel<string>({ required: true });
 const props = defineProps<{
@@ -35,6 +37,7 @@ const props = defineProps<{
   assetBase: string;
   paperFile: File | null;
   addImage: (file: File) => Promise<NoteAsset | null>;
+  issues: ReviewIssue[];
 }>();
 const emit = defineEmits<{ removeAsset: [path: string] }>();
 const sourceMode = shallowRef(false);
@@ -56,6 +59,7 @@ const editor = useEditor({
     TableRow,
     TableHeader,
     TableCell,
+    reviewHighlightExtension(() => props.issues),
   ],
   content: renderedMarkdown(body.value, props.assets, props.assetBase),
   editorProps: {
@@ -98,6 +102,22 @@ watch(sourceMode, (value) => {
     );
 });
 const inTable = computed(() => editor.value?.isActive("table") || false);
+watch(
+  () => props.issues,
+  () => {
+    if (editor.value) editor.value.view.dispatch(editor.value.state.tr);
+  },
+);
+async function focusIssue(index: number) {
+  sourceMode.value = false;
+  await nextTick();
+  const root = editor.value?.view.dom;
+  const target =
+    root?.querySelector<HTMLElement>(`[data-review-issue="${index}"]`) || root;
+  target?.scrollIntoView({ block: "center", behavior: "smooth" });
+  editor.value?.commands.focus();
+}
+defineExpose({ focusIssue });
 const blockStyle = computed(
   () =>
     [2, 3, 4]
@@ -188,7 +208,18 @@ function insertTemplate() {
 }
 </script>
 <template>
-  <section class="body-editor" aria-label="正文编辑">
+  <section
+    class="body-editor"
+    :class="{
+      'has-review-issues': issues.some(
+        (i) =>
+          !['title', 'paperUrl', 'pdfUrl', 'year', 'venue', 'tags'].includes(
+            i.field,
+          ),
+      ),
+    }"
+    aria-label="正文编辑"
+  >
     <div class="body-editor-heading">
       <h2>阅读笔记</h2>
       <div>

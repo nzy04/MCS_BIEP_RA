@@ -3,6 +3,8 @@ import type { Note, NoteSummary, Session, SiteConfig } from "../../shared/note";
 import { summarize, createNote } from "../../shared/note";
 import { groupPapers, ownsNote } from "../../shared/papers";
 import { reviewPending } from "../../shared/review";
+import type { ReviewIssue } from "../../shared/review";
+import type { ContextAction } from "../components/ContextMenu.vue";
 import { useReviewJobs } from "./useReviewJobs";
 import { useDirections } from "./useDirections";
 import {
@@ -46,7 +48,18 @@ export function useWorkspace() {
   );
   const notes = ref<NoteSummary[]>([]);
   const directions = useDirections(configuration, user, notes);
-  const directionManagerOpen = shallowRef(false);
+  const contextMenu = shallowRef<{
+    x: number;
+    y: number;
+    items: ContextAction[];
+  } | null>(null);
+  const directionAction = shallowRef<{
+    kind: "create" | "rename" | "delete";
+    name: string;
+  } | null>(null);
+  const noteToDelete = shallowRef<NoteSummary | null>(null);
+  const editingIssues = shallowRef<ReviewIssue[]>([]);
+  const newDirection = shallowRef<{ name: string } | null>(null);
   const lastDirectionChange = shallowRef<DirectionChange | null>(null);
   const selectedNote = ref<Note | null>(null);
   const editingNote = ref<Note | null>(null);
@@ -119,9 +132,82 @@ export function useWorkspace() {
     }
   }
   function beginImport(note?: Note, direction?: string) {
+    editingIssues.value = [];
     if (!note && direction) note = { ...createNote(), tags: [direction] };
     editingNote.value = note ? JSON.parse(JSON.stringify(note)) : null;
     navigate("import");
+  }
+  function menuPosition(event: MouseEvent) {
+    const box = (
+      event.currentTarget as HTMLElement | null
+    )?.getBoundingClientRect();
+    return {
+      x: event.clientX || box?.left || 12,
+      y: event.clientY || box?.bottom || 12,
+    };
+  }
+  function directionContext(event: MouseEvent, name: string | null) {
+    if (!directions.canCreate.value) return;
+    event.preventDefault();
+    const items: ContextAction[] = [
+      {
+        label: "新建研究方向",
+        run: () => (directionAction.value = { kind: "create", name: "" }),
+      },
+    ];
+    if (name)
+      items.push(
+        {
+          label: "重命名",
+          run: () => (directionAction.value = { kind: "rename", name }),
+        },
+        {
+          label: "删除研究方向",
+          danger: true,
+          run: () => (directionAction.value = { kind: "delete", name }),
+        },
+      );
+    contextMenu.value = { ...menuPosition(event), items };
+  }
+  function noteContext(event: MouseEvent, note: NoteSummary) {
+    event.preventDefault();
+    const items: ContextAction[] = [
+      { label: "阅读笔记", run: () => void openNote(note.id) },
+    ];
+    if (note.local || (!!user.value?.canWrite && ownsNote(note, user.value)))
+      items.push({
+        label: "删除我的笔记",
+        danger: true,
+        run: () => (noteToDelete.value = note),
+      });
+    contextMenu.value = { ...menuPosition(event), items };
+  }
+  async function deleteOwnNote(note: NoteSummary) {
+    if (note.local) await removeLocalNote(note.id);
+    else {
+      if (!user.value?.canWrite || !ownsNote(note, user.value))
+        throw new Error("只有上传者本人可以删除这份笔记。");
+      try {
+        const result = await api.deleteNote(note);
+        remoteNotes.value = result.notes;
+      } catch (error) {
+        if (error instanceof api.ApiError && error.status === 401)
+          user.value = null;
+        throw error;
+      }
+    }
+    const local = await localNotes().catch(() => []),
+      ids = new Set(local.map((n) => n.id));
+    notes.value = [
+      ...local.map(summarize),
+      ...remoteNotes.value.filter((n) => !ids.has(n.id)),
+    ];
+    if (selectedNote.value?.id === note.id) {
+      selectedNote.value = null;
+      navigate("library");
+    }
+    if (editingNote.value?.id === note.id) editingNote.value = null;
+    notify("已删除你的笔记。");
   }
   function contribute(
     note: Pick<
@@ -348,8 +434,13 @@ export function useWorkspace() {
   async function editReview(id: string) {
     try {
       let note: Note | null = null;
+      let issues = reviews.jobs.value.find((j) => j.id === id)?.issues || [];
+      let receipt = reviews.jobs.value.find((j) => j.id === id)?.receipt;
       try {
-        note = (await api.reviewDetail(id)).note;
+        const detail = await api.reviewDetail(id);
+        note = detail.note;
+        issues = detail.job.issues;
+        receipt = detail.job.receipt;
       } catch (error) {
         if (error instanceof api.ApiError && error.status === 401) {
           user.value = null;
@@ -363,7 +454,9 @@ export function useWorkspace() {
         if (saved && saved.owner === user.value?.login) note = saved.note;
       }
       if (!note) throw new Error("服务器草稿已到期，请重新导入笔记文件。");
+      if (receipt) note.review = receipt;
       beginImport(note);
+      editingIssues.value = issues;
     } catch (error) {
       notify((error as Error).message, "error");
     }
@@ -419,7 +512,14 @@ export function useWorkspace() {
     pendingReviews,
     notes,
     directions,
-    directionManagerOpen,
+    contextMenu,
+    directionAction,
+    noteToDelete,
+    editingIssues,
+    directionContext,
+    noteContext,
+    deleteOwnNote,
+    newDirection,
     lastDirectionChange,
     changeDirection,
     selectedNote,

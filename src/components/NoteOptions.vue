@@ -6,6 +6,7 @@ defineEmits<{
   move: [note: NoteSummary];
   dragNote: [event: DragEvent, note: NoteSummary];
   dragEnd: [];
+  context: [event: MouseEvent, note: NoteSummary];
 }>();
 </script>
 <template>
@@ -20,6 +21,7 @@ defineEmits<{
         :draggable="!!canMove"
         @dragstart.stop="canMove && $emit('dragNote', $event, note)"
         @dragend.stop="$emit('dragEnd')"
+        @contextmenu.stop="$emit('context', $event, note)"
       >
         <a
           :href="`#paper/${note.id}`"

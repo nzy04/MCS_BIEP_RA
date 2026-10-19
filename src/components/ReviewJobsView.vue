@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RefreshCw, FileText } from "lucide-vue-next";
 import { sectionDefinitions } from "../../shared/note";
+import AiBadge from "./AiBadge.vue";
 import {
   reviewPending,
   type ReviewJobSummary,
@@ -111,12 +112,10 @@ const fieldLabel = (field: string) =>
           </div>
           <ul v-if="job.receipt.supplements.length" class="review-supplements">
             <li v-for="(item, i) in job.receipt.supplements" :key="i">
-              补充{{ fieldLabel(item.field) }}：<a
-                :href="item.sourceUrl"
-                target="_blank"
-                rel="noopener"
-                >{{ item.value }}</a
-              >
+              <a :href="item.sourceUrl" target="_blank" rel="noopener">{{
+                item.value
+              }}</a
+              ><AiBadge />
             </li>
           </ul>
         </div>
@@ -216,6 +215,12 @@ time {
 }
 .review-issues strong {
   font-weight: 500;
+}
+.review-issues {
+  color: #b42318;
+  background: #fff6f5;
+  border-left: 3px solid #b42318;
+  padding: 12px 16px 12px 34px;
 }
 .review-message {
   margin-top: 18px;

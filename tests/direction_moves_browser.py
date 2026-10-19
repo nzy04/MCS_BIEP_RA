@@ -82,18 +82,15 @@ with sync_playwright() as p:
         state['signed_in']=False
         anonymous_context=browser.new_context();anonymous_context.route('**/api/**',fixture)
         anon=anonymous_context.new_page();anon.goto(base);anon.wait_for_load_state('networkidle')
-        anon.get_by_role('button',name='新建研究方向',exact=True).click()
-        expect(anon.get_by_label('新研究方向',exact=True)).to_be_visible()
-        expect(anon.locator('.direction-create').get_by_role('link',name='登录 GitHub',exact=True)).to_be_visible()
+        anon.get_by_role('heading',name='研究方向',exact=True).click(button='right')
+        expect(anon.get_by_role('menu')).to_have_count(0)
         state['notes']=[];state['directions']=[]
         anon.reload();anon.wait_for_load_state('networkidle')
         anon.get_by_role('button',name='上传笔记',exact=True).click()
         anon.get_by_role('button',name='在线写笔记',exact=True).click()
-        anon.get_by_role('button',name='新建研究方向',exact=True).click()
-        anon.get_by_label('新研究方向',exact=True).fill('第一个研究方向')
-        expect(anon.locator('.direction-picker').get_by_role('link',name='登录 GitHub',exact=True)).to_be_visible()
+        expect(anon.get_by_role('button',name='新建研究方向',exact=True)).to_have_count(0)
         assert not errors,errors
-        results.append('anonymous users see create entry and name field with explicit login action; no hidden dead end or runtime errors')
+        results.append('anonymous users can browse without access to direction management actions; no runtime errors')
     finally:browser.close()
 (out/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps(results,ensure_ascii=False))
