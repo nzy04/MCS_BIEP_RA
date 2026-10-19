@@ -2,7 +2,9 @@ import MarkdownIt from "markdown-it";
 import type { NoteAsset, Note } from "../../shared/note";
 import { noteBody } from "../../shared/document";
 import { sanitizeNoteHtml } from "./htmlToMarkdown";
+import { useMath, renderMath } from "./math";
 const renderer = new MarkdownIt({ html: true, linkify: true, breaks: true });
+useMath(renderer);
 
 export function renderedMarkdown(
   markdown: string,
@@ -22,11 +24,17 @@ export function renderedMarkdown(
     image.loading = "lazy";
     image.alt ||= "笔记插图";
   }
-  for (const link of document.querySelectorAll("a")) {
+  // Recheck URLs after resolving the note's attachment metadata, before trusted math markup.
+  const safe = new DOMParser().parseFromString(
+    sanitizeNoteHtml(document.body.innerHTML),
+    "text/html",
+  );
+  for (const link of safe.querySelectorAll("a")) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
   }
-  return sanitizeNoteHtml(document.body.innerHTML);
+  renderMath(safe);
+  return safe.body.innerHTML;
 }
 export function renderedNote(note: Note, assetBase = ""): string {
   return renderedMarkdown(noteBody(note), note.assets, assetBase);

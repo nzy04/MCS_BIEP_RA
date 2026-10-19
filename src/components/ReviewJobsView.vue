@@ -102,6 +102,20 @@ const fieldLabel = (field: string) =>
           </li>
         </ul>
         <div v-if="job.receipt" class="review-result">
+          <p v-if="job.receipt.formatted" class="review-message">
+            已整理基本格式
+          </p>
+          <details
+            v-if="job.receipt.suggestions?.length"
+            class="review-suggestions"
+          >
+            <summary>可选完善建议</summary>
+            <ul>
+              <li v-for="(suggestion, i) in job.receipt.suggestions" :key="i">
+                {{ suggestion.message }}
+              </li>
+            </ul>
+          </details>
           <p v-if="job.receipt.pdfNotice" class="review-message">
             {{ job.receipt.pdfNotice }}
           </p>
@@ -258,6 +272,19 @@ time {
 .review-message {
   margin-top: 18px;
   line-height: 1.8;
+}
+.review-suggestions {
+  margin-top: 18px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.review-suggestions summary {
+  cursor: pointer;
+  color: var(--green);
+}
+.review-suggestions ul {
+  margin: 10px 0 0;
+  padding-left: 22px;
 }
 .review-supplements a {
   color: var(--green);

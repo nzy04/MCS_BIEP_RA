@@ -1,6 +1,7 @@
 import Turndown from "turndown";
 import DOMPurify from "dompurify";
 import type { NoteAsset } from "../../shared/note";
+import { mathSelector } from "./math";
 
 export function sanitizeNoteHtml(html: string): string {
   return DOMPurify.sanitize(html, {
@@ -53,6 +54,8 @@ export function sanitizeNoteHtml(html: string): string {
       "align",
       "start",
       "class",
+      "data-type",
+      "data-latex",
     ],
   });
 }
@@ -80,6 +83,19 @@ export function htmlToMarkdown(
     headingStyle: "atx",
     codeBlockStyle: "fenced",
     bulletListMarker: "-",
+  });
+  // Tiptap serializes formula atoms as empty elements with their exact TeX source.
+  for (const formula of document.querySelectorAll(mathSelector))
+    formula.textContent = formula.getAttribute("data-latex") || "";
+  converter.addRule("note-math", {
+    filter: (node) => node instanceof HTMLElement && node.matches(mathSelector),
+    replacement: (_content, node) => {
+      const element = node as HTMLElement;
+      const source = element.getAttribute("data-latex") || "";
+      return element.getAttribute("data-type") === "block-math"
+        ? `\n\n$$\n${source}\n$$\n\n`
+        : `$${source}$`;
+    },
   });
   converter.addRule("note-table", {
     filter: "table",

@@ -2,7 +2,7 @@
 import json, os, pathlib, subprocess, sys, time
 root=pathlib.Path(__file__).resolve().parents[1]
 results=[]
-for name in ['browser_smoke.py','document_browser.py','contributors_browser.py','directions_browser.py','direction_moves_browser.py','direction_crud_browser.py','review_browser.py']:
+for name in ['browser_smoke.py','document_browser.py','contributors_browser.py','directions_browser.py','direction_moves_browser.py','direction_crud_browser.py','review_browser.py','math_browser.py']:
     started=time.monotonic()
     result=subprocess.run([sys.executable,str(root/'tests'/name)],cwd=root,env=os.environ.copy(),text=True,encoding='utf-8',capture_output=True,timeout=180)
     entry={'test':name,'passed':result.returncode==0,'seconds':round(time.monotonic()-started,2),'output':result.stdout.strip(),'error':result.stderr.strip() if result.returncode else ''}

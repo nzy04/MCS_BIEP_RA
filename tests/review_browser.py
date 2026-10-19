@@ -93,9 +93,14 @@ with sync_playwright() as p:
     assert state['publish_calls'] == 2
     assert 'review-mark' not in state['submitted']['body']
     state['published'] = {**state['submitted'], 'pdfUrl': pdf_url, 'tags': receipt['directions'], 'review': receipt, 'revision': 'approved-version', 'updatedAt': '2026-10-18T15:03:00Z'}
-    state['jobs'][0].update(status='published', receipt=receipt, commitUrl='https://github.com/test-group/test-repo/commit/test')
+    receipt.update(formatted=True, suggestions=[{'field':'insights','message':'有空时可补充一次自己的实验观察。'}])
+    state['jobs'][0].update(status='published', issues=[], receipt=receipt, commitUrl='https://github.com/test-group/test-repo/commit/test')
     page.get_by_role('button', name='刷新', exact=True).click()
     page.locator('.review-status', has_text='已发布').wait_for()
+    page.get_by_text('已整理基本格式',exact=True).wait_for()
+    page.get_by_text('可选完善建议',exact=True).click()
+    assert '有空时可补充' in page.locator('.review-suggestions').inner_text()
+    assert page.locator('.review-issues').count() == 0
     page.get_by_role('button', name='阅读笔记', exact=True).click()
     page.get_by_role('heading', name='World Models', exact=True).wait_for()
     assert original_insights in page.locator('.note-body').inner_text()

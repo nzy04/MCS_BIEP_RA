@@ -47,6 +47,8 @@ export interface ReviewReceipt {
   sources: ReviewSource[];
   supplements: ReviewSupplement[];
   pdfNotice?: string;
+  suggestions?: ReviewIssue[];
+  formatted?: boolean;
 }
 export interface ReviewJobSummary {
   id: string;

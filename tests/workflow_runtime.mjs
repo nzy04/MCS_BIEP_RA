@@ -324,6 +324,7 @@ try {
     body: first.body.split("\n\n!")[0],
     author: "伪造Alice",
   };
+  approved = false;
   const other = await call(
     "/api/publish",
     { note: second, assets: [], baseRevision: "" },
@@ -335,9 +336,18 @@ try {
     JSON.parse(files.get(`data/notes/${second.id}.json`)).author,
     "Bob",
   );
+  assert.equal(
+    JSON.parse(files.get(`data/notes/${second.id}.json`)).review.suggestions[0]
+      .field,
+    "insights",
+  );
   const before = files.size;
   approved = false;
-  const rejected = { ...second, id: `note-${crypto.randomUUID()}` };
+  const rejected = {
+    ...second,
+    id: `note-${crypto.randomUUID()}`,
+    body: "待补充",
+  };
   const rejection = await call("/api/publish", {
     note: rejected,
     assets: [],
@@ -480,7 +490,7 @@ try {
     if (samples % 3 === 0) await restart();
     if (Date.now() < deadline) await new Promise((r) => setTimeout(r, 10000));
   } while (Date.now() < deadline);
-  assert.equal(modelCalls, 3);
+  assert.equal(modelCalls, 2);
   assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 1);
   const snapshot = path.join(persist, "repository-snapshot");
   for (const [relative, content] of files) {
@@ -502,6 +512,7 @@ try {
     nickname: true,
     multipleContributors: true,
     rejectionNoWrite: true,
+    optionalSuggestionsDoNotBlockPublishing: true,
     authorOnlySubmissionDeletion: true,
     assetsUnchanged: true,
     repositoryIntegrity: true,

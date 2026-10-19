@@ -106,6 +106,7 @@ const note = {
   revision: "",
   excerpt: "",
   readingDepth: "阅读笔记",
+  body: "待补充",
   sections,
   assets: [],
   sourceNames: [],
@@ -149,17 +150,14 @@ try {
     "needs_changes",
     JSON.stringify({ job, modelCalls, gitWrites }),
   );
-  assert.equal(modelCalls, 1);
+  assert.equal(modelCalls, 0);
   assert.equal(gitWrites, 0);
-  assert.equal(job.issues[0].field, "insights");
+  assert.equal(job.issues[0].field, "summary");
   const detail = await target.fetch("https://review.internal/", {
     method: "POST",
     body: JSON.stringify({ action: "detail", user: person, id: job.id }),
   });
-  assert.equal(
-    (await detail.json()).note.pdfUrl,
-    "https://arxiv.org/pdf/1803.10122",
-  );
+  assert.equal((await detail.json()).note.body, "待补充");
   console.log(
     JSON.stringify({
       sqlitePersistence: true,
@@ -167,7 +165,7 @@ try {
       modelCalls,
       gitWrites,
       status: job.status,
-      missingPdfFilledInBackground: true,
+      placeholderFeedbackWithoutModelCharge: true,
     }),
   );
 } finally {

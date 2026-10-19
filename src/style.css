@@ -929,6 +929,26 @@ p {
 .note-body p {
   margin: 13px 0;
 }
+.note-body [data-type="block-math"] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+  margin: 18px 0;
+}
+.note-body .katex {
+  overflow-wrap: normal;
+  line-height: normal;
+}
+.note-body .katex-display {
+  margin: 0;
+  padding: 6px 2px;
+}
+.note-body .math-error {
+  white-space: pre-wrap;
+  color: #9a372f;
+}
 .note-body img {
   max-width: 100%;
   height: auto;

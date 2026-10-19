@@ -4,6 +4,8 @@ import { EditorContent, useEditor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
+import { mathOptions } from "../services/math";
 import {
   Table,
   TableRow,
@@ -55,6 +57,12 @@ const editor = useEditor({
     StarterKit.configure({ link: false }),
     Image.configure({ allowBase64: true }),
     Link.configure({ openOnClick: false }),
+    InlineMath.configure({
+      katexOptions: { ...mathOptions, displayMode: false },
+    }),
+    BlockMath.configure({
+      katexOptions: { ...mathOptions, displayMode: true },
+    }),
     Table.configure({ resizable: false }),
     TableRow,
     TableHeader,

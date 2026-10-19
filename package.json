@@ -16,15 +16,18 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@mdit/plugin-tex": "^0.24.2",
     "@tiptap/core": "3.32.0",
     "@tiptap/extension-image": "3.32.0",
     "@tiptap/extension-link": "3.32.0",
+    "@tiptap/extension-mathematics": "3.32.0",
     "@tiptap/extension-table": "3.32.0",
     "@tiptap/pm": "3.32.0",
     "@tiptap/starter-kit": "3.32.0",
     "@tiptap/vue-3": "3.32.0",
     "dompurify": "^3.2.7",
     "fflate": "0.8.3",
+    "katex": "^0.18.2",
     "lucide-vue-next": "^0.468.0",
     "mammoth": "^1.13.0",
     "markdown-it": "^14.1.0",
@@ -34,6 +37,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261006.1",
+    "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.0.0",
     "@types/turndown": "^5.0.5",

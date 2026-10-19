@@ -13,6 +13,7 @@ import {
   type QueueStorage,
 } from "../worker/reviewQueue";
 import { handle, seal, type Env, type Identity } from "../worker/app";
+import { basicMarkdown } from "../worker/noteFormatting";
 
 const env: Env = {
   ASSETS: { fetch: async () => new Response("site") },
@@ -59,7 +60,7 @@ function model(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("退回反馈保留可定位的真实原句，丢弃模型编造的引文", async () => {
+test("模型的内容深度意见只作建议，保留真实引文但不阻止发布", async () => {
   const n = note();
   const quote = n.sections.insights.slice(0, 16);
   const result = await reviewSubmission(n, env, [], async () =>
@@ -77,9 +78,10 @@ test("退回反馈保留可定位的真实原句，丢弃模型编造的引文",
       }),
     ),
   );
-  assert.equal(result.approved, false);
-  assert.equal(result.issues[0].quote, quote);
-  assert.equal(result.issues[1].quote, undefined);
+  assert.equal(result.approved, true);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.receipt?.suggestions?.[0].quote, quote);
+  assert.equal(result.receipt?.suggestions?.[1].quote, undefined);
 });
 
 test("手动选择的自定义文件夹完全保留，模型不能追加或改写", async () => {
@@ -119,10 +121,11 @@ test("未选择时复用空目录名称，支持模型创建全新学科方向�
   assert.equal(calls, 1);
   assert.deepEqual(outcome.note.tags, ["我的空文件夹", "全新的自定义学科"]);
   assert.equal(outcome.receipt?.directionSource, "model");
-  await assert.rejects(
-    reviewSubmission(n, env, [], async () => chat(model({ directions: [] }))),
-    /格式校验/,
+  const unclassified = await reviewSubmission(n, env, [], async () =>
+    chat(model({ directions: [] })),
   );
+  assert.equal(unclassified.approved, true);
+  assert.deepEqual(unclassified.note.tags, []);
 });
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -135,6 +138,81 @@ const chat = (value = model(), finish = "stop") =>
       { finish_reason: finish, message: { content: JSON.stringify(value) } },
     ],
   });
+
+test("仅空白或占位内容需要修改，不消耗审核额度；有内容的短笔记和插图允许贡献", async () => {
+  for (const body of [
+    "待补充",
+    "## 阅读笔记\n\nTODO",
+    "## 研究问题\n\n## 方法",
+  ]) {
+    const n = note();
+    n.body = body;
+    let calls = 0;
+    const outcome = await reviewSubmission(n, env, [], async () => {
+      calls++;
+      return chat();
+    });
+    assert.equal(outcome.approved, false);
+    assert.equal(calls, 0);
+    assert.ok(outcome.issues[0].message.includes("不要求固定字数"));
+  }
+  for (const body of [
+    "这篇论文用潜在状态预测下一步观测。",
+    "![方法流程](assets/uploads/note/diagram.png)",
+  ]) {
+    const n = note();
+    n.body = body;
+    const outcome = await reviewSubmission(n, env, [], async () => chat());
+    assert.equal(outcome.approved, true);
+  }
+});
+
+test("自动整理只补标题格式并在原段落前加标题，保留公式、代码和正文原句", async () => {
+  const n = note();
+  const problem = "记录方法如何利用潜在空间减少交互。";
+  const method = "先编码再预测，规划时使用预测状态。";
+  n.body = `${problem}\n\n${method}\n\n$$\n\\hat z_{t+1}=f(z_t,a_t)\n$$\n\n\`\`\`python\n\nkeep_code()\n\`\`\``;
+  const result = await reviewSubmission(n, env, [], async () =>
+    chat(
+      model({
+        headings: [
+          { label: "研究问题", before: problem },
+          { label: "方法与贡献", before: method },
+          { label: "核心内容", before: "模型编造的原句" },
+          { label: "其他记录", before: "keep_code()" },
+          { label: "其他记录", before: "\\hat z_{t+1}=f(z_t,a_t)" },
+        ],
+      }),
+    ),
+  );
+  assert.equal(result.approved, true);
+  assert.equal(
+    result.note.body,
+    `## 研究问题\n\n${problem}\n\n## 方法与贡献\n\n${n.body.slice(problem.length + 2)}`,
+  );
+  assert.equal(result.receipt?.formatted, true);
+  const code = "```python\n#literal\n```\n\n$$\n#formula\n$$";
+  assert.equal(basicMarkdown(`##问题\r\n\r\n${code}`), `## 问题\n\n${code}`);
+  assert.equal(
+    basicMarkdown("```markdown\n##问题\n内容\n```"),
+    "## 问题\n内容",
+  );
+  const current = note();
+  current.body = "## 自定义章节\n\n原文一字不动。";
+  const unchanged = await reviewSubmission(current, env, [], async () =>
+    chat(
+      model({ headings: [{ label: "核心内容", before: "原文一字不动。" }] }),
+    ),
+  );
+  assert.equal(unchanged.note.body, current.body);
+  const large = note();
+  large.body = `${problem}\n\n${"长".repeat(39_996 - problem.length - 2)}`;
+  const nearLimit = await reviewSubmission(large, env, [], async () =>
+    chat(model({ headings: [{ label: "核心内容", before: problem }] })),
+  );
+  assert.equal(nearLimit.approved, true);
+  assert.equal(nearLimit.note.body, large.body);
+});
 test("维护者连通检查只读取模型清单，不调用分析或泄露密钥", async () => {
   let calls = 0;
   assert.deepEqual(
@@ -169,17 +247,20 @@ test("维护者连通检查只读取模型清单，不调用分析或泄露密�
     403,
   );
 });
-test("明显缺少个人理解时直接反馈，不调用任何付费或检索服务", async () => {
+test("没有个人思考的简短初读摘录可发布，不要求补齐模板", async () => {
   const n = note();
-  n.sections.insights = "";
+  for (const key of Object.keys(n.sections))
+    n.sections[key as keyof typeof n.sections] = "";
+  n.sections.original = "用潜在空间模型预测未来状态，减少真实环境交互。";
+  n.readingDepth = "精读";
   let calls = 0;
   const result = await reviewSubmission(n, env, [], async () => {
     calls++;
-    throw new Error("must not call");
+    return chat();
   });
-  assert.equal(result.approved, false);
-  assert.equal(calls, 0);
-  assert.ok(result.issues.some((i) => i.field === "insights"));
+  assert.equal(result.approved, true);
+  assert.equal(calls, 1);
+  assert.equal(result.note.sections.insights, "");
 });
 test("资料完整只调用一次审核，正文不携带成员凭据，个人思考保持原文", async () => {
   const n = note(),
@@ -239,7 +320,7 @@ test("先用免费元数据准确匹配，成功时不触发搜索兜底", async
   assert.equal(result.receipt?.sources[0]?.kind, "crossref");
 });
 
-test("完整图文笔记按实际内容审核，保留自定义章节和图表，语义退回仍有效", async () => {
+test("完整图文笔记保留自定义章节和图表，完善建议不退回", async () => {
   const n = note();
   n.body = `## 框架图与工作流\n\n${n.sections.problem}\n\n![框架图](assets/uploads/${n.id}/framework.png)\n\n图1 模型训练与控制流程。\n\n## 我的判断与关联\n\n${n.sections.method}\n\n${n.sections.insights}\n\n| 条件 | 观察 |\n| --- | --- |\n| 长期预测 | 误差累积需要检验 |`;
   let calls = 0;
@@ -262,9 +343,9 @@ test("完整图文笔记按实际内容审核，保留自定义章节和图表�
       }),
     ),
   );
-  assert.equal(rejected.approved, false);
+  assert.equal(rejected.approved, true);
   assert.equal(rejected.note.body, n.body);
-  assert.equal(rejected.issues[0]?.field, "insights");
+  assert.equal(rejected.receipt?.suggestions?.[0]?.field, "insights");
 });
 test("免费定位失败才调用一次搜索，找不到唯一来源时不再花费聊天额度", async () => {
   const n = note();
@@ -327,20 +408,18 @@ test("搜索找到官方来源才补充，并记录来源后进行一次审核",
     "https://arxiv.org/abs/1803.10122",
   );
 });
-test("不接受模型编造个人思考，也不接受未完整返回的通过结果", async () => {
-  await assert.rejects(
-    () =>
-      reviewSubmission(note(), env, [], async () =>
-        chat(
-          model({
-            extractions: [
-              { section: "insights", text: "模型自己编造的新观点" },
-            ],
-          }),
-        ),
-      ),
-    /无法在原笔记中核对/,
+test("忽略无法核对的自动整理，不编造观点；不接受未完整返回的结果", async () => {
+  const original = note();
+  original.sections.insights = "";
+  const result = await reviewSubmission(original, env, [], async () =>
+    chat(
+      model({
+        extractions: [{ section: "insights", text: "模型自己编造的新观点" }],
+      }),
+    ),
   );
+  assert.equal(result.approved, true);
+  assert.equal(result.note.sections.insights, "");
   await assert.rejects(
     () =>
       reviewSubmission(note(), env, [], async () => chat(model(), "length")),
@@ -354,7 +433,7 @@ test("不接受模型编造个人思考，也不接受未完整返回的通过�
     /格式校验/,
   );
 });
-test("原始文字可以逐字分配到空模板，最终仍执行必填规则", async () => {
+test("原始文字可逐字整理到空栏目，不能提取时也无需补齐栏目", async () => {
   const n = note(),
     originalInsights = n.sections.insights;
   n.sections.insights = "";
@@ -368,8 +447,8 @@ test("原始文字可以逐字分配到空模板，最终仍执行必填规则",
   assert.equal(result.note.sections.insights, originalInsights);
   assert.equal(result.note.sections.original, originalInsights);
   const rejected = await reviewSubmission(n, env, [], async () => chat());
-  assert.equal(rejected.approved, false);
-  assert.ok(rejected.issues.some((i) => i.field === "insights"));
+  assert.equal(rejected.approved, true);
+  assert.equal(rejected.note.sections.insights, "");
 });
 
 class MemoryStorage implements QueueStorage {
