@@ -27,7 +27,6 @@ export function useImporter(existing?: Note | null) {
   const noteFile = shallowRef<File | null>(null);
   const paperFile = shallowRef<File | null>(null);
   const paperPreview = shallowRef("");
-  const retainPdf = shallowRef(false);
   const draftSaved = shallowRef("");
   const recovered = shallowRef(false);
   let timer: ReturnType<typeof setTimeout>;
@@ -161,31 +160,9 @@ export function useImporter(existing?: Note | null) {
         `图片尚未绑定：${missing.join("、")}。请补充图片或删除失效引用。`,
       );
     note.assets = note.assets.filter(
-      (a) => a.mime === "application/pdf" || sources.includes(a.path),
+      (a) => a.mime.startsWith("image/") && sources.includes(a.path),
     );
     note.sections = structureText(noteBody(note)).sections;
-    if (retainPdf.value && paperFile.value) {
-      if (paperFile.value.size > 4 * 1024 * 1024)
-        throw new Error(
-          "初版随笔记发布的 PDF 请控制在 4 MB 内；也可以填写官方论文链接。",
-        );
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(paperFile.value!);
-      });
-      const path = `assets/uploads/${note.id}/paper.pdf`;
-      note.assets = note.assets.filter((a) => a.path !== path);
-      note.assets.push({
-        path,
-        name: paperFile.value.name,
-        mime: "application/pdf",
-        size: paperFile.value.size,
-        dataUrl,
-      });
-      note.sourceNames.push(paperFile.value.name);
-    }
     if (note.assets.length > 25) throw new Error("最多附带 25 个文件。");
     if (
       note.assets.some(
@@ -246,7 +223,6 @@ export function useImporter(existing?: Note | null) {
     noteFile,
     paperFile,
     paperPreview,
-    retainPdf,
     draftSaved,
     recovered,
     selectFile,

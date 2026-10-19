@@ -42,29 +42,20 @@ function note() {
 const entry = (id = "1803.10122v4", title = "World Models", year = "2018") =>
   `<entry><id>http://arxiv.org/abs/${id}</id><title>${title}</title><published>${year}-03-27</published><author><name>David Ha</name></author></entry>`;
 
-test("已提供 PDF 链接或附件只审核一次，不检索也不覆盖已有资源", async () => {
-  for (const type of ["url", "asset"]) {
-    const n = note();
-    if (type === "url") n.pdfUrl = "https://example.edu/paper.pdf";
-    else
-      n.assets = [
-        {
-          path: `assets/uploads/${n.id}/paper.pdf`,
-          mime: "application/pdf",
-          size: 20,
-        },
-      ];
-    let calls = 0;
-    const result = await reviewSubmission(n, settings, [], async (u) => {
-      assert.equal(String(u), "https://api.deepseek.com/chat/completions");
-      calls++;
-      return chat();
-    });
-    assert.equal(result.approved, true);
-    assert.equal(calls, 1);
-    assert.equal(result.note.pdfUrl, n.pdfUrl);
-    assert.equal(result.receipt?.supplements.length, 0);
-  }
+test("已提供 PDF 链接只审核一次，不检索、不下载原文件也不覆盖链接", async () => {
+  const n = note();
+  n.pdfUrl = "https://example.edu/paper.pdf";
+  let calls = 0;
+  const result = await reviewSubmission(n, settings, [], async (u) => {
+    assert.equal(String(u), "https://api.deepseek.com/chat/completions");
+    calls++;
+    return chat();
+  });
+  assert.equal(result.approved, true);
+  assert.equal(calls, 1);
+  assert.equal(result.note.pdfUrl, n.pdfUrl);
+  assert.deepEqual(result.note.assets, []);
+  assert.equal(result.receipt?.supplements.length, 0);
 });
 test("arXiv、OpenReview 等已知来源规则补充 PDF，无需检索或额外模型调用", async () => {
   const n = note();

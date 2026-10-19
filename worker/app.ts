@@ -247,9 +247,10 @@ export function validateIncoming(value: any): {
     "image/jpeg": /\.jpe?g$/,
     "image/webp": /\.webp$/,
     "image/gif": /\.gif$/,
-    "application/pdf": /\.pdf$/,
   };
   const metadata = input.assets.map((a: any) => {
+    if (a?.mime === "application/pdf" || /\.pdf$/i.test(a?.path || ""))
+      throw new HttpError(400, "论文库只保存 PDF 下载链接，不接收 PDF 附件。");
     if (
       !a ||
       typeof a.path !== "string" ||
@@ -258,7 +259,7 @@ export function validateIncoming(value: any): {
       !allowed[a.mime]?.test(a.path) ||
       !Number.isSafeInteger(a.size) ||
       a.size < 0 ||
-      a.size > (a.mime === "application/pdf" ? 4 : 2) * 1024 * 1024
+      a.size > 2 * 1024 * 1024
     )
       throw new HttpError(400, "附件路径、格式或大小不合法。");
     return {
@@ -305,7 +306,6 @@ export function validateIncoming(value: any): {
       throw new HttpError(413, "一次发布的附件总量请控制在 6 MB 内。");
     const header = atob(a.base64.slice(0, 40));
     if (
-      (a.mime === "application/pdf" && !header.startsWith("%PDF-")) ||
       (a.mime === "image/png" && !header.startsWith("\x89PNG\r\n\x1a\n")) ||
       (a.mime === "image/jpeg" && !header.startsWith("\xff\xd8\xff")) ||
       (a.mime === "image/gif" && !header.startsWith("GIF8")) ||

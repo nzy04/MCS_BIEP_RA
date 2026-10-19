@@ -68,7 +68,7 @@ export function ruleIssues(note: Note, final = false): ReviewIssue[] {
     issues.push(
       issue(
         "original",
-        "笔记正文超过 40,000 字符，请保留阅读要点，将论文原文作为附件。",
+        "笔记正文超过 40,000 字符，请保留阅读要点，并填写论文原文链接。",
       ),
     );
   if (clean(text).length < 120 || placeholder(text))
@@ -417,10 +417,7 @@ export async function reviewSubmission(
           venue: match.kind === "arxiv" ? "arXiv" : "",
           kind: match.kind,
         });
-        if (
-          !note.pdfUrl &&
-          !note.assets.some((a) => a.mime === "application/pdf")
-        )
+        if (!note.pdfUrl)
           fillPdf(match.url, {
             title: match.title,
             url: match.sourceUrl,
@@ -456,7 +453,7 @@ export async function reviewSubmission(
       ],
       note,
     };
-  if (!note.pdfUrl && !note.assets.some((a) => a.mime === "application/pdf")) {
+  if (!note.pdfUrl) {
     const inferred =
       inferPdfUrl(note.paperUrl) ||
       (webUrl(note.paperUrl) && /\.pdf$/i.test(new URL(note.paperUrl).pathname)

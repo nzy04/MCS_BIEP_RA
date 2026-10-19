@@ -406,6 +406,33 @@ test("目录超过 GitHub 内联大小限制时按同一不可变 ref 读取 raw
   assert.equal(calls, 2);
 });
 
+test("PDF 附件及伪装成图片的 PDF 在进入审核前被拒绝，下载链接可保存", () => {
+  const n = note();
+  n.pdfUrl = "https://arxiv.org/pdf/1803.10122";
+  assert.equal(validateIncoming({ note: n, assets: [] }).note.pdfUrl, n.pdfUrl);
+  const base64 = Buffer.from("%PDF-1.7\nexample").toString("base64");
+  for (const [name, mime] of [
+    ["paper.pdf", "application/pdf"],
+    ["paper.pdf", "image/png"],
+    ["paper.png", "image/png"],
+  ]) {
+    const path = `assets/uploads/${n.id}/${name}`;
+    assert.throws(
+      () =>
+        validateIncoming({
+          note: {
+            ...n,
+            assets: [
+              { path, mime, size: Buffer.from(base64, "base64").length },
+            ],
+          },
+          assets: [{ path, mime, base64 }],
+        }),
+      /只保存 PDF 下载链接|内容与文件类型不匹配/,
+    );
+  }
+});
+
 test("畸形附件元数据、重复路径和伪造大小在进入审核前被拒绝", () => {
   const n = note();
   for (const asset of [

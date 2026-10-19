@@ -48,7 +48,6 @@ const {
   noteFile,
   paperFile,
   paperPreview,
-  retainPdf,
   draftSaved,
   recovered,
   selectFile,
@@ -208,7 +207,7 @@ async function downloadPackage() {
           </button>
         </section>
         <section class="upload-panel optional-panel">
-          <h2>论文 PDF <span>可选</span></h2>
+          <h2>本地 PDF 参考 <span>可选</span></h2>
           <label class="paper-upload"
             ><input
               data-testid="paper-file"
@@ -218,7 +217,7 @@ async function downloadPackage() {
               @change="changed($event, 'paper')" /><BookOpen :size="25" />
             <div>
               <strong>{{ paperFile ? paperFile.name : "选择论文 PDF" }}</strong
-              ><span>或在模板中填写论文链接</span>
+              ><span>仅用于本机预览与插图，不上传原文件</span>
             </div>
             <Plus :size="19"
           /></label>
@@ -310,10 +309,6 @@ async function downloadPackage() {
         </section>
         <aside class="publish-panel">
           <h2>发布笔记</h2>
-          <label v-if="paperFile" class="checkbox-field"
-            ><input v-model="retainPdf" type="checkbox" />保存 PDF 附件（≤4
-            MB）</label
-          >
           <div class="destination">
             <Github :size="20" />
             <div>

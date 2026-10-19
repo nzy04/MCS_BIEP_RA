@@ -123,15 +123,6 @@ async function downloadPackage() {
           target="_blank"
           rel="noopener"
           ><Github :size="17" />代码 / 项目 <span>↗</span></a
-        ><template v-for="asset in note.assets" :key="asset.path"
-          ><a
-            v-if="asset.mime === 'application/pdf'"
-            class="resource-link"
-            :href="asset.dataUrl || `${assetBase}/${asset.path}`"
-            target="_blank"
-            rel="noopener"
-            >附带 PDF <span>↗</span></a
-          ></template
         >
         <div class="reader-detail">
           <span>最后更新</span><strong>{{ note.updatedAt.slice(0, 10) }}</strong

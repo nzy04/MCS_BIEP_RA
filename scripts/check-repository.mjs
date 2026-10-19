@@ -41,6 +41,11 @@ for (const summary of index.notes) {
   }
   for (const asset of note.assets || []) {
     assert.ok(
+      /^image\/(png|jpeg|webp|gif)$/.test(asset.mime) &&
+        /\.(png|jpe?g|webp|gif)$/i.test(asset.path),
+      `Only note images may be stored; PDF must use a download URL: ${asset.path}`,
+    );
+    assert.ok(
       asset.path.startsWith(`assets/uploads/${note.id}/`) &&
         /^[-a-zA-Z0-9.]+$/.test(asset.path.split("/").pop()),
       `Invalid asset path ${asset.path}`,
