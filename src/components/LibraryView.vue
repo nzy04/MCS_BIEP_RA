@@ -2,7 +2,6 @@
 import { computed, shallowRef } from "vue";
 import { Search, Folder } from "lucide-vue-next";
 import type { NoteSummary, SiteConfig } from "../../shared/note";
-import type { PaperSummary } from "../../shared/catalog";
 import { groupPapers, countContributors } from "../../shared/papers";
 import { directionKey, mergeDirections } from "../../shared/directions";
 import PaperCard from "./PaperCard.vue";
@@ -10,7 +9,6 @@ import LibraryToolbar from "./LibraryToolbar.vue";
 import DirectionCreateForm from "./DirectionCreateForm.vue";
 const props = defineProps<{
   notes: NoteSummary[];
-  catalog?: PaperSummary[];
   config: SiteConfig;
   loading: boolean;
   directions: string[];
@@ -31,10 +29,9 @@ const tags = computed(() =>
   mergeDirections(
     props.directions,
     props.notes.flatMap((n) => n.tags),
-    (props.catalog || []).flatMap((p) => p.tags),
   ).sort((a, b) => a.localeCompare(b, "zh-CN")),
 );
-const papers = computed(() => groupPapers(props.notes, props.catalog));
+const papers = computed(() => groupPapers(props.notes));
 const authors = computed(() => countContributors(props.notes));
 const tagCounts = computed(
   () =>
@@ -55,15 +52,11 @@ const filtered = computed(() =>
           n.tags.some(
             (t) => directionKey(t) === directionKey(selectedTag.value!),
           )) &&
-        [
-          n.record
-            ? `${n.record.title} ${n.record.authors.join(" ")} ${n.tags.join(" ")}`
-            : "",
-          ...n.notes.map(
+        n.notes
+          .map(
             (note) =>
               `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`,
-          ),
-        ]
+          )
           .join(" ")
           .toLowerCase()
           .includes(query.value.toLowerCase()),
@@ -143,10 +136,10 @@ function resetFilters() {
           <h3>
             {{
               selectedTag && !query
-                ? "这个方向还没有论文"
-                : papers.length
+                ? "这个方向还没有笔记"
+                : notes.length
                   ? "无匹配文献"
-                  : "暂无论文"
+                  : "暂无笔记"
             }}
           </h3>
           <button

@@ -25,14 +25,9 @@ defineEmits<{
       <nav class="primary-nav" aria-label="主导航">
         <a
           href="#"
-          :class="{ active: ['library', 'reader', 'catalog'].includes(view) }"
+          :class="{ active: view === 'library' || view === 'reader' }"
           @click.prevent="$emit('navigate', 'library')"
           >论文库</a
-        ><a
-          href="#collect"
-          :class="{ active: view === 'collect' }"
-          @click.prevent="$emit('navigate', 'collect')"
-          >按标题收录</a
         ><a
           v-if="user"
           href="#reviews"
@@ -107,25 +102,5 @@ defineEmits<{
   color: var(--green);
   border-radius: 2px;
   font-size: 13px;
-}
-@media (max-width: 1100px) {
-  .header-inner {
-    flex-wrap: wrap;
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-  .primary-nav {
-    order: 3;
-    width: 100%;
-    height: auto;
-    min-height: 32px;
-    flex-wrap: wrap;
-    gap: 6px 20px;
-  }
-  .primary-nav a {
-    height: auto;
-    min-height: 32px;
-    white-space: nowrap;
-  }
 }
 </style>

@@ -35,6 +35,11 @@ const note = defineModel<Note>({ required: true });
         type="url"
         placeholder="https://…" /></label
     ><label class="field"
+      >PDF 下载链接<input
+        v-model="note.pdfUrl"
+        type="url"
+        placeholder="留空：提交后自动检索补充" /></label
+    ><label class="field"
       >代码链接<input
         v-model="note.codeUrl"
         type="url"

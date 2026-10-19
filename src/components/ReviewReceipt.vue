@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import type { ReviewReceipt } from "../../shared/review";
 defineProps<{ receipt: ReviewReceipt }>();
-const labels = { paperUrl: "论文链接", year: "发表年份", venue: "会议 / 期刊" };
+const labels = {
+  paperUrl: "论文链接",
+  pdfUrl: "PDF 下载链接",
+  year: "发表年份",
+  venue: "会议 / 期刊",
+};
 </script>
 <template>
   <details class="review-receipt">
     <summary>归类与补充来源</summary>
-    <p>研究方向{{ receipt.directionSource === 'manual' ? '（手动选择）' : receipt.directionSource === 'model' ? '（自动归类）' : '' }}：{{ receipt.directions.join("、") }}</p>
+    <p>
+      研究方向{{
+        receipt.directionSource === "manual"
+          ? "（手动选择）"
+          : receipt.directionSource === "model"
+            ? "（自动归类）"
+            : ""
+      }}：{{ receipt.directions.join("、") }}
+    </p>
     <ul v-if="receipt.supplements.length">
       <li v-for="(item, i) in receipt.supplements" :key="i">
         自动补充{{ labels[item.field] }}：<a
@@ -17,6 +30,7 @@ const labels = { paperUrl: "论文链接", year: "发表年份", venue: "会议 
         >
       </li>
     </ul>
+    <p v-if="receipt.pdfNotice">{{ receipt.pdfNotice }}</p>
     <ul>
       <li v-for="(source, i) in receipt.sources" :key="i">
         <a :href="source.url" target="_blank" rel="noopener">{{

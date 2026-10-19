@@ -7,6 +7,8 @@ base = os.environ.get('TEST_BASE_URL', 'http://127.0.0.1:5188/')
 state = {'jobs': [], 'submitted': None, 'publish_calls': 0, 'published': None}
 job_id = 'review-' + 'a' * 48
 receipt = {'model': 'test-model', 'policyVersion': 'test', 'reviewedAt': '2026-10-18T15:00:00Z', 'directions': ['世界模型', '规划控制'], 'sources': [{'title': 'World Models', 'url': 'https://arxiv.org/abs/1803.10122', 'kind': 'provided'}], 'supplements': []}
+pdf_url = 'https://arxiv.org/pdf/1803.10122'
+receipt['supplements'] = [{'field': 'pdfUrl', 'value': pdf_url, 'sourceUrl': 'https://arxiv.org/abs/1803.10122'}]
 
 def fixture(route):
     path = route.request.url.split('/api/', 1)[1]
@@ -42,9 +44,12 @@ with sync_playwright() as p:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(base); page.wait_for_load_state('networkidle')
+    assert page.get_by_role('link', name='按标题收录', exact=True).count() == 0
     page.get_by_role('button', name='上传笔记', exact=True).click()
     page.get_by_role('button', name='在线写笔记', exact=True).click()
     page.get_by_label('笔记标题', exact=True).fill('World Models')
+    page.get_by_text('论文信息', exact=True).click()
+    assert page.get_by_label('PDF 下载链接', exact=True).input_value() == ''
     original_insights = '我希望进一步检验长时预测误差对规划和策略迁移的影响。'
     body = '## 问题与背景\n\n学习潜在环境模型，减少策略训练所需的真实环境交互。\n\n## 个人判断\n\n' + original_insights
     page.get_by_role('button', name='Markdown', exact=True).click()
@@ -55,6 +60,7 @@ with sync_playwright() as p:
     page.get_by_role('heading', name='我的提交', exact=True).wait_for()
     page.locator('.review-status', has_text='审核中').wait_for()
     assert state['publish_calls'] == 1
+    assert state['submitted'].get('pdfUrl', '') == ''
     page.screenshot(path=str(out / 'review-pending.png'), full_page=False)
     state['jobs'][0].update(status='needs_changes', issues=[{'field': 'method', 'message': '请补充方法的关键模块和实现思路。'}], receipt=receipt)
     page.reload(); page.locator('.review-status', has_text='待修改').wait_for()
@@ -69,7 +75,7 @@ with sync_playwright() as p:
     page.get_by_role('button', name='确认发布到仓库', exact=True).click()
     page.locator('.review-status', has_text='审核中').wait_for()
     assert state['publish_calls'] == 2
-    state['published'] = {**state['submitted'], 'tags': receipt['directions'], 'review': receipt, 'revision': 'approved-version', 'updatedAt': '2026-10-18T15:03:00Z'}
+    state['published'] = {**state['submitted'], 'pdfUrl': pdf_url, 'tags': receipt['directions'], 'review': receipt, 'revision': 'approved-version', 'updatedAt': '2026-10-18T15:03:00Z'}
     state['jobs'][0].update(status='published', receipt=receipt, commitUrl='https://github.com/test-group/test-repo/commit/test')
     page.get_by_role('button', name='刷新', exact=True).click()
     page.locator('.review-status', has_text='已发布').wait_for()
@@ -77,6 +83,10 @@ with sync_playwright() as p:
     page.get_by_role('heading', name='World Models', exact=True).wait_for()
     assert original_insights in page.locator('.note-body').inner_text()
     assert page.locator('.review-receipt').count() == 1
+    assert page.get_by_role('link', name='论文 PDF').get_attribute('href') == pdf_url
+    page.locator('.review-receipt summary').click()
+    assert 'PDF 下载链接' in page.locator('.review-receipt').inner_text()
+    page.screenshot(path=str(out / 'pdf-background-result.png'), full_page=True)
     mobile = browser.new_context(viewport={'width': 390, 'height': 844})
     mobile.route('**/api/**', fixture)
     mobile_page = mobile.new_page(); mobile_page.goto(base + '#reviews'); mobile_page.wait_for_load_state('networkidle')

@@ -49,7 +49,7 @@ with sync_playwright() as p:
         expect(page.get_by_role('alert')).to_contain_text('未创建')
         page.get_by_role('button',name='创建方向',exact=True).click()
         expect(page.get_by_role('heading',name='我自己的长期课题',exact=True)).to_be_visible()
-        expect(page.get_by_text('这个方向还没有论文',exact=True)).to_be_visible()
+        expect(page.get_by_text('这个方向还没有笔记',exact=True)).to_be_visible()
         page.reload();page.wait_for_load_state('networkidle')
         expect(page.get_by_role('button',name='我自己的长期课题 0',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'desktop-folders.png'),full_page=True)

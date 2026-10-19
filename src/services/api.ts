@@ -1,10 +1,5 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
 import type { ReviewJobSummary } from "../../shared/review";
-import type {
-  PaperChoice,
-  PaperRecord,
-  PaperSummary,
-} from "../../shared/catalog";
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -67,32 +62,6 @@ export async function library(connected: boolean): Promise<NoteSummary[]> {
 export async function directions(): Promise<string[]> {
   return (await api<{ directions: string[] }>("/api/directions")).directions;
 }
-export async function catalog(connected: boolean): Promise<PaperSummary[]> {
-  if (!connected) return [];
-  try {
-    return (await api<{ papers: PaperSummary[] }>("/api/papers")).papers;
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) return [];
-    throw e;
-  }
-}
-export const loadPaper = (id: string) =>
-  api<PaperRecord>(`/api/papers/${encodeURIComponent(id)}`);
-export const searchPapers = (query: string) =>
-  api<{ candidates: PaperChoice[]; message: string; fallback: boolean }>(
-    "/api/paper-search",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    },
-  );
-export const collectPaper = (token: string, tags: string[]) =>
-  api<{ job: ReviewJobSummary }>("/api/paper-collect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, tags }),
-  });
 export function createDirection(
   name: string,
 ): Promise<{ name: string; directions: string[] }> {

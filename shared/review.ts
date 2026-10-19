@@ -15,7 +15,7 @@ export interface ReviewSource {
   kind: "provided" | "crossref" | "arxiv" | "search";
 }
 export interface ReviewSupplement {
-  field: "paperUrl" | "year" | "venue";
+  field: "paperUrl" | "pdfUrl" | "year" | "venue";
   value: string;
   sourceUrl: string;
 }
@@ -27,9 +27,9 @@ export interface ReviewReceipt {
   directionSource?: "manual" | "model";
   sources: ReviewSource[];
   supplements: ReviewSupplement[];
+  pdfNotice?: string;
 }
 export interface ReviewJobSummary {
-  kind?: "paper";
   id: string;
   noteId: string;
   title: string;

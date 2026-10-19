@@ -60,7 +60,8 @@ function model(overrides: Record<string, unknown> = {}) {
 }
 
 test("手动选择的自定义文件夹完全保留，模型不能追加或改写", async () => {
-  const n = note(); n.tags = ["我的课题 / 子方向", "A"];
+  const n = note();
+  n.tags = ["我的课题 / 子方向", "A"];
   const outcome = await reviewSubmission(n, env, [], async (_url, init) => {
     const request = JSON.parse(String(init?.body));
     const payload = JSON.parse(request.messages[1].content);
@@ -77,18 +78,28 @@ test("手动选择的自定义文件夹完全保留，模型不能追加或改�
 test("未选择时复用空目录名称，支持模型创建全新学科方向且不额外增加请求", async () => {
   let calls = 0;
   const n = note();
-  const outcome = await reviewSubmission(n, env, ["我的空文件夹"], async (_url, init) => {
-    calls++;
-    const payload = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
-    assert.equal(payload.directionMode, "automatic");
-    assert.deepEqual(payload.existingDirections, ["我的空文件夹"]);
-    assert.deepEqual(payload.selectedDirections, []);
-    return chat(model({ directions: ["我的空文件夹", "全新的自定义学科"] }));
-  });
+  const outcome = await reviewSubmission(
+    n,
+    env,
+    ["我的空文件夹"],
+    async (_url, init) => {
+      calls++;
+      const payload = JSON.parse(
+        JSON.parse(String(init?.body)).messages[1].content,
+      );
+      assert.equal(payload.directionMode, "automatic");
+      assert.deepEqual(payload.existingDirections, ["我的空文件夹"]);
+      assert.deepEqual(payload.selectedDirections, []);
+      return chat(model({ directions: ["我的空文件夹", "全新的自定义学科"] }));
+    },
+  );
   assert.equal(calls, 1);
   assert.deepEqual(outcome.note.tags, ["我的空文件夹", "全新的自定义学科"]);
   assert.equal(outcome.receipt?.directionSource, "model");
-  await assert.rejects(reviewSubmission(n, env, [], async () => chat(model({ directions: [] }))), /格式校验/);
+  await assert.rejects(
+    reviewSubmission(n, env, [], async () => chat(model({ directions: [] }))),
+    /格式校验/,
+  );
 });
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -150,6 +161,7 @@ test("明显缺少个人理解时直接反馈，不调用任何付费或检索�
 test("资料完整只调用一次审核，正文不携带成员凭据，个人思考保持原文", async () => {
   const n = note(),
     requests: any[] = [];
+  n.pdfUrl = "https://arxiv.org/pdf/1803.10122";
   const result = await reviewSubmission(
     n,
     env,
@@ -176,6 +188,7 @@ test("先用免费元数据准确匹配，成功时不触发搜索兜底", async
   const n = note();
   n.paperUrl = "";
   n.year = "";
+  n.pdfUrl = "https://arxiv.org/pdf/1803.10122";
   const calls: string[] = [];
   const result = await reviewSubmission(n, env, [], async (url) => {
     calls.push(String(url));
@@ -251,10 +264,9 @@ test("免费定位失败才调用一次搜索，找不到唯一来源时不再�
     throw new Error("unexpected chat request");
   });
   assert.equal(result.approved, false);
-  assert.deepEqual(
-    calls.map((u) => new URL(u).host),
-    ["api.crossref.org", "api.deepseek.com"],
-  );
+  assert.equal(calls.filter(u=>u.includes("api.crossref.org")).length, 2);
+  assert.equal(calls.filter(u=>u.includes("export.arxiv.org")).length, 1);
+  assert.equal(calls.filter(u=>u.includes("tools/search")).length, 1);
   assert.equal(result.issues[0]?.field, "paperUrl");
   assert.equal(academicUrl("https://arxiv.org.evil.test/abs/123"), false);
   assert.equal(academicUrl("https://arxiv.org@evil.test/abs/123"), false);

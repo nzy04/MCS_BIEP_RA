@@ -192,6 +192,14 @@ try {
   assert.equal(modelCalls, 1);
   assert.equal(gitWrites, 0);
   assert.equal(job.issues[0].field, "insights");
+  const detail = await target.fetch("https://review.internal/", {
+    method: "POST",
+    body: JSON.stringify({ action: "detail", user: person, id: job.id }),
+  });
+  assert.equal(
+    (await detail.json()).note.pdfUrl,
+    "https://arxiv.org/pdf/1803.10122",
+  );
   console.log(
     JSON.stringify({
       sqlitePersistence: true,
@@ -199,6 +207,7 @@ try {
       modelCalls,
       gitWrites,
       status: job.status,
+      missingPdfFilledInBackground: true,
     }),
   );
 } finally {

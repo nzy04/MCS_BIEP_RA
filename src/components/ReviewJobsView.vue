@@ -34,6 +34,7 @@ const fieldLabel = (field: string) =>
     {
       title: "标题",
       paperUrl: "论文来源",
+      pdfUrl: "PDF 下载链接",
       tags: "研究方向",
       year: "年份",
       venue: "会议 / 期刊",
@@ -83,15 +84,7 @@ const fieldLabel = (field: string) =>
               rejected:
                 job.status === 'needs_changes' || job.status === 'failed',
             }"
-            >{{
-              job.kind === "paper"
-                ? reviewPending(job.status)
-                  ? "收录中"
-                  : job.status === "published"
-                    ? "已收录"
-                    : labels[job.status]
-                : labels[job.status]
-            }}</span
+            >{{ labels[job.status] }}</span
           >
         </div>
         <time :datetime="job.createdAt">{{
@@ -105,6 +98,9 @@ const fieldLabel = (field: string) =>
           </li>
         </ul>
         <div v-if="job.receipt" class="review-result">
+          <p v-if="job.receipt.pdfNotice" class="review-message">
+            {{ job.receipt.pdfNotice }}
+          </p>
           <div class="card-tags">
             <span
               v-for="direction in job.receipt.directions"
@@ -126,10 +122,7 @@ const fieldLabel = (field: string) =>
         </div>
         <div class="review-item-actions">
           <button
-            v-if="
-              job.kind !== 'paper' &&
-              (job.status === 'needs_changes' || job.status === 'failed')
-            "
+            v-if="job.status === 'needs_changes' || job.status === 'failed'"
             class="button secondary"
             @click="$emit('edit', job.id)"
           >
@@ -145,7 +138,7 @@ const fieldLabel = (field: string) =>
             class="text-link"
             @click="$emit('open', job.noteId)"
           >
-            {{ job.kind === "paper" ? "查看论文" : "阅读笔记" }}</button
+            阅读笔记</button
           ><a
             v-if="job.commitUrl"
             :href="job.commitUrl"

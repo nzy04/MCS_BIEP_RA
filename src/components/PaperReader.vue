@@ -110,6 +110,13 @@ async function downloadPackage() {
           rel="noopener"
           ><ExternalLink :size="17" />论文原文 <span>↗</span></a
         ><a
+          v-if="note.pdfUrl"
+          class="resource-link"
+          :href="note.pdfUrl"
+          target="_blank"
+          rel="noopener"
+          ><Download :size="17" />论文 PDF <span>↗</span></a
+        ><a
           v-if="note.codeUrl"
           class="resource-link"
           :href="note.codeUrl"

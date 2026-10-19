@@ -200,6 +200,7 @@ test("一次提交包含笔记、Markdown 和索引，身份来自会话且不�
   const git = fakeGit();
   const n = note();
   n.authorLogin = "forged-user";
+  n.pdfUrl = "https://arxiv.org/pdf/1803.10122";
   const result = await commitNote(
     env,
     user,
@@ -211,6 +212,8 @@ test("一次提交包含笔记、Markdown 和索引，身份来自会话且不�
   assert.equal(git.read().pendingFiles.length, 3);
   assert.equal(git.read().index.notes[0].title, n.title);
   assert.equal(git.read().oldNote.sections.summary, n.sections.summary);
+  assert.equal(git.read().oldNote.pdfUrl, n.pdfUrl);
+  assert.equal(git.read().index.notes[0].pdfUrl, n.pdfUrl);
 });
 test("服务端发布完整正文，目录不携带正文，格式修改产生新版本", async () => {
   const git = fakeGit();

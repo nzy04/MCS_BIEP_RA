@@ -9,8 +9,6 @@ import SetupDialog from "./components/SetupDialog.vue";
 import ProfileDialog from "./components/ProfileDialog.vue";
 import ReviewJobsView from "./components/ReviewJobsView.vue";
 import GuideView from "./components/GuideView.vue";
-import PaperIntakeView from "./components/PaperIntakeView.vue";
-import CatalogPaperView from "./components/CatalogPaperView.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -28,7 +26,6 @@ const app = useWorkspace();
   /><LibraryView
     v-if="app.view.value === 'library'"
     :notes="app.notes.value"
-    :catalog="app.catalog.value"
     :config="app.configuration.value"
     :loading="app.loading.value"
     :directions="app.directions.options.value"
@@ -38,24 +35,6 @@ const app = useWorkspace();
     @create="app.beginImport(undefined, $event)"
     @refresh="app.refresh"
     @setup="app.setupOpen.value = true"
-  /><PaperIntakeView
-    v-else-if="app.view.value === 'collect'"
-    :user="app.user.value"
-    :directions="app.directions.options.value"
-    :collect="app.collect"
-    @back="app.navigate('library')"
-    @login="app.login"
-    @expired="app.user.value = null"
-  /><CatalogPaperView
-    v-else-if="app.view.value === 'catalog' && app.selectedCatalog.value"
-    :paper="app.selectedCatalog.value"
-    :notes="app.catalogNotes.value"
-    :user="app.user.value"
-    :asset-base="app.assetBase.value"
-    @back="app.navigate('library')"
-    @open="app.openNote"
-    @contribute="app.contribute"
-    @login="app.login"
   /><GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
     v-else-if="app.view.value === 'reviews'"
     :jobs="app.reviews.jobs.value"

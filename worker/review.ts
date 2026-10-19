@@ -1,6 +1,8 @@
 import { structureText, type Note, type SectionKey } from "../shared/note";
 import { directionKey, mergeDirections } from "../shared/directions";
 import { noteBody } from "../shared/document";
+import { inferPdfUrl, findFreePdf } from "./paperPdf";
+import { canonicalPaperUrl } from "../shared/papers";
 import type {
   ReviewIssue,
   ReviewReceipt,
@@ -8,7 +10,7 @@ import type {
   ReviewSupplement,
 } from "../shared/review";
 
-export const POLICY_VERSION = "2026-10-19.1";
+export const POLICY_VERSION = "2026-10-19.2";
 export const MAX_REVIEW_CHARS = 40_000;
 export interface ReviewEnv {
   DEEPSEEK_API_KEY?: string;
@@ -309,6 +311,7 @@ async function deepseekSearch(
   note: Note,
   env: ReviewEnv,
   fetcher: typeof fetch,
+  pdf = false,
 ): Promise<ReviewSource | null> {
   const response = await fetcher("https://api.deepseek.com/v1/tools/search", {
     method: "POST",
@@ -317,7 +320,7 @@ async function deepseekSearch(
       Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      query: `${note.title.replace(/[\r\n]/g, " ").slice(0, 110)} paper`,
+      query: `${note.title.replace(/[\r\n]/g, " ").slice(0, 110)} paper${pdf ? " pdf" : ""}`,
       count: 5,
       need_content: false,
     }),
@@ -332,6 +335,7 @@ async function deepseekSearch(
       (r: any) =>
         academicUrl(r.url) &&
         typeof r.title === "string" &&
+        (!pdf || !!inferPdfUrl(r.url)) &&
         Number(r.rerank_score) >= 1.5,
     )
     .map((r: any) => ({ ...r, score: titleScore(note.title, r.title) }))
@@ -343,7 +347,9 @@ async function deepseekSearch(
     (hits[1] &&
       hits[1].url !== top.url &&
       top.score - hits[1].score < 0.05 &&
-      normalizedTitle(hits[1].title) !== normalizedTitle(top.title))
+      (pdf
+        ? canonicalPaperUrl(hits[1].url) !== canonicalPaperUrl(top.url)
+        : normalizedTitle(hits[1].title) !== normalizedTitle(top.title)))
   )
     return null;
   return { title: top.title.slice(0, 250), url: top.url, kind: "search" };
@@ -370,6 +376,16 @@ export async function reviewSubmission(
   if (!env.DEEPSEEK_API_KEY) throw new Error("维护者尚未配置共享审核密钥。");
   const sources: ReviewSource[] = [],
     supplements: ReviewSupplement[] = [];
+  let searched = false;
+  let pdfLookupPerformed = false;
+  let pdfNotice = "";
+  const fillPdf = (url: string, source: ReviewSource) => {
+    if (!note.pdfUrl && url) {
+      note.pdfUrl = url;
+      supplements.push({ field: "pdfUrl", value: url, sourceUrl: source.url });
+      if (!sources.some((s) => s.url === source.url)) sources.push(source);
+    }
+  };
   if (webUrl(note.paperUrl))
     sources.push({ title: note.title, url: note.paperUrl, kind: "provided" });
   const fill = (metadata: Metadata) => {
@@ -390,9 +406,32 @@ export async function reviewSubmission(
     await stage("metadata");
     const m = await freeMetadata(note, fetcher);
     if (m) fill(m);
+    else if (!note.paperUrl) {
+      pdfLookupPerformed = true;
+      const match = await findFreePdf(note, titleScore, fetcher);
+      if (match) {
+        fill({
+          title: match.title,
+          url: match.sourceUrl,
+          year: match.year || "",
+          venue: match.kind === "arxiv" ? "arXiv" : "",
+          kind: match.kind,
+        });
+        if (
+          !note.pdfUrl &&
+          !note.assets.some((a) => a.mime === "application/pdf")
+        )
+          fillPdf(match.url, {
+            title: match.title,
+            url: match.sourceUrl,
+            kind: match.kind,
+          });
+      }
+    }
   }
   if (!note.paperUrl) {
     await stage("search");
+    searched = true;
     const found = await deepseekSearch(note, env, fetcher);
     if (found) {
       note.paperUrl = found.url;
@@ -417,6 +456,44 @@ export async function reviewSubmission(
       ],
       note,
     };
+  if (!note.pdfUrl && !note.assets.some((a) => a.mime === "application/pdf")) {
+    const inferred =
+      inferPdfUrl(note.paperUrl) ||
+      (webUrl(note.paperUrl) && /\.pdf$/i.test(new URL(note.paperUrl).pathname)
+        ? note.paperUrl
+        : "");
+    if (inferred)
+      fillPdf(inferred, {
+        title: note.title,
+        url: note.paperUrl,
+        kind: "provided",
+      });
+    else {
+      await stage("metadata");
+      const match = pdfLookupPerformed
+        ? null
+        : await findFreePdf(note, titleScore, fetcher);
+      if (match)
+        fillPdf(match.url, {
+          title: match.title,
+          url: match.sourceUrl,
+          kind: match.kind,
+        });
+      if (!note.pdfUrl && !searched) {
+        searched = true;
+        await stage("search");
+        try {
+          const found = await deepseekSearch(note, env, fetcher, true);
+          if (found) fillPdf(inferPdfUrl(found.url), found);
+        } catch {
+          /* PDF lookup failure does not discard a valid reading note. */
+        }
+      }
+      if (!note.pdfUrl)
+        pdfNotice =
+          "未找到可确认属于这篇论文的公开 PDF 链接，已保留论文来源，可稍后自行补充。";
+    }
+  }
   await stage("model");
   const response = await fetcher("https://api.deepseek.com/chat/completions", {
     method: "POST",
@@ -482,16 +559,17 @@ export async function reviewSubmission(
     typeof result.approved !== "boolean" ||
     !Array.isArray(result.issues) ||
     result.issues.length > 12 ||
-    (!manualDirections && (!Array.isArray(result.directions) ||
-    result.directions.length < 1 ||
-    result.directions.length > 3 ||
-    result.directions.some(
-      (d: unknown) =>
-        typeof d !== "string" ||
-        d.trim().length < 1 ||
-        d.length > 50 ||
-        /[\p{Cc}\p{Cf}<>]/u.test(d),
-    )))
+    (!manualDirections &&
+      (!Array.isArray(result.directions) ||
+        result.directions.length < 1 ||
+        result.directions.length > 3 ||
+        result.directions.some(
+          (d: unknown) =>
+            typeof d !== "string" ||
+            d.trim().length < 1 ||
+            d.length > 50 ||
+            /[\p{Cc}\p{Cf}<>]/u.test(d),
+        )))
   )
     throw new Error("审核结果未通过格式校验，未发布笔记。");
   const issues: ReviewIssue[] = result.issues.map((i: any) => {
@@ -521,8 +599,14 @@ export async function reviewSubmission(
     if (!note.sections[key].trim()) note.sections[key] = extraction.text;
   }
   issues.push(...ruleIssues(note, true));
-  const directions = manualDirections ? selectedDirections : mergeDirections(result.directions.map((d: string) =>
-    existingTags.find(t => directionKey(t) === directionKey(d)) || d));
+  const directions = manualDirections
+    ? selectedDirections
+    : mergeDirections(
+        result.directions.map(
+          (d: string) =>
+            existingTags.find((t) => directionKey(t) === directionKey(d)) || d,
+        ),
+      );
   const receipt: ReviewReceipt = {
     policyVersion: POLICY_VERSION,
     reviewedAt: new Date().toISOString(),
@@ -531,6 +615,7 @@ export async function reviewSubmission(
     directionSource: manualDirections ? "manual" : "model",
     sources,
     supplements,
+    ...(pdfNotice ? { pdfNotice } : {}),
   };
   if (!result.approved && !issues.length)
     issues.push(

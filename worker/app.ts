@@ -15,7 +15,6 @@ import { profileSession, updateProfile } from "./profile";
 import { createDirection, repositoryDirections } from "./directions";
 import { directionName, mergeDirections } from "../shared/directions";
 import { checkDeepseek } from "./review";
-import type { PaperCandidate, PaperSummary } from "../shared/catalog";
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   SITE_TITLE: string;
@@ -292,6 +291,7 @@ export function validateIncoming(value: any): {
     year: text("year", 4),
     venue: text("venue", 80),
     paperUrl: text("paperUrl", 1500),
+    pdfUrl: input.pdfUrl === undefined ? "" : text("pdfUrl", 1500),
     codeUrl: text("codeUrl", 1500),
     author: text("author", 100),
     authorLogin: "",
@@ -580,13 +580,9 @@ async function readPublic(env: Env, path: string) {
   });
   if (
     response.status === 404 &&
-    [
-      "data/library.json",
-      "data/directions.json",
-      "data/papers/index.json",
-    ].includes(path)
+    ["data/library.json", "data/directions.json"].includes(path)
   )
-    return json({ version: 1, notes: [], directions: [], papers: [] });
+    return json({ version: 1, notes: [], directions: [] });
   if (!response.ok)
     throw new HttpError(
       response.status === 404 ? 404 : 502,
@@ -798,92 +794,20 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!configured(env)) return json({ notes: [] });
       return await readPublic(env, "data/library.json");
     }
-    if (path === "/api/papers" && request.method === "GET") {
-      if (!configured(env)) return json({ papers: [] });
-      return readPublic(env, "data/papers/index.json");
-    }
-    const paperMatch = path.match(/^\/api\/papers\/(paper-[a-f0-9]{32})$/);
-    if (paperMatch && request.method === "GET") {
-      if (!configured(env)) throw new HttpError(404, "仓库尚未配置。");
-      return readPublic(env, `data/papers/${paperMatch[1]}.json`);
-    }
-    if (
-      ["/api/paper-search", "/api/paper-collect"].includes(path) &&
-      request.method === "POST"
-    ) {
-      requireOrigin(request);
-      const user = await identity(request, env);
-      if (!user) throw new HttpError(401, "请先登录 GitHub，再收录论文。");
-      await assertWriteAccess(env, user);
-      if (Number(request.headers.get("Content-Length") || 0) > 128_000)
-        throw new HttpError(413, "请求内容过大。");
-      const raw = await request.text();
-      if (raw.length > 128_000) throw new HttpError(413, "请求内容过大。");
-      let value;
-      try {
-        value = JSON.parse(raw);
-      } catch {
-        throw new HttpError(400, "请求格式不正确。");
-      }
-      let paper: PaperCandidate | undefined;
-      if (path === "/api/paper-collect") {
-        if (typeof value?.token !== "string" || value.token.length > 110_000)
-          throw new HttpError(400, "请先检索并选择论文。");
-        const choice = await unseal<{
-          candidate: PaperCandidate;
-          owner: number;
-          expires: number;
-        }>(value.token, env.SESSION_SECRET);
-        if (
-          !choice ||
-          choice.owner !== user.id ||
-          !Number.isFinite(choice.expires) ||
-          choice.expires <= Date.now() ||
-          !choice.candidate
-        )
-          throw new HttpError(400, "候选已失效，请重新检索论文。");
-        paper = { ...choice.candidate };
-        if (value.tags !== undefined) {
-          if (!Array.isArray(value.tags) || value.tags.length > 8)
-            throw new HttpError(400, "最多选择 8 个研究方向。");
-          try {
-            paper.tags = mergeDirections(value.tags.map(directionName));
-          } catch (e) {
-            throw new HttpError(400, (e as Error).message);
-          }
-        }
-      }
-      return reviewService(env).fetch(
-        new Request("https://review.internal/api/papers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: paper ? "paper-submit" : "paper-search",
-            user,
-            paper,
-            query: value?.query,
-          }),
-        }),
-      );
-    }
     if (path === "/api/directions" && request.method === "GET") {
       if (!configured(env)) return json({ directions: [] });
-      const [catalog, index, papers] = await Promise.all([
+      const [catalog, index] = await Promise.all([
         readPublic(env, "data/directions.json").then((r) =>
           r.json(),
         ) as Promise<{ directions?: string[] }>,
         readPublic(env, "data/library.json").then((r) => r.json()) as Promise<{
           notes: NoteSummary[];
         }>,
-        readPublic(env, "data/papers/index.json").then((r) =>
-          r.json(),
-        ) as Promise<{ papers: PaperSummary[] }>,
       ]);
       return json({
         directions: mergeDirections(
           catalog.directions || [],
           index.notes.flatMap((n) => n.tags || []),
-          papers.papers.flatMap((p) => p.tags || []),
         ),
       });
     }

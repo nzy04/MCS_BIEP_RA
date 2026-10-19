@@ -103,6 +103,7 @@ export interface NoteSummary {
   venue: string;
   tags: string[];
   paperUrl: string;
+  pdfUrl?: string;
   codeUrl: string;
   author: string;
   authorLogin: string;
@@ -160,6 +161,7 @@ export function createNote(): Note {
     venue: "",
     tags: [],
     paperUrl: "",
+    pdfUrl: "",
     codeUrl: "",
     author: "",
     authorLogin: "",
@@ -243,6 +245,7 @@ export function toMarkdown(note: Note): string {
     venue: note.venue,
     tags: note.tags,
     paper_url: note.paperUrl,
+    pdf_url: note.pdfUrl || "",
     code_url: note.codeUrl,
     reading_depth: note.readingDepth,
   };
@@ -261,7 +264,7 @@ export function validateNote(note: Note): string[] {
   if (note.title.length > 250) errors.push("标题请控制在 250 字以内。");
   if (!meaningfulBody(noteBody(note)))
     errors.push("请填写或导入至少一段笔记内容。");
-  for (const url of [note.paperUrl, note.codeUrl])
+  for (const url of [note.paperUrl, note.pdfUrl, note.codeUrl])
     if (url && !/^https?:\/\//i.test(url))
       errors.push("论文和代码链接请使用完整的 http(s) 地址。");
   return errors;
