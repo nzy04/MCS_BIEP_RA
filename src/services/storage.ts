@@ -19,12 +19,18 @@ export async function getRecord<T>(key: string): Promise<T | undefined> {
   });
 }
 export async function setRecord(key: string, value: unknown): Promise<void> {
+  return setRecords({ [key]: value });
+}
+export async function setRecords(
+  entries: Record<string, unknown>,
+): Promise<void> {
   const database = await db();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction("records", "readwrite");
-    transaction
-      .objectStore("records")
-      .put(JSON.parse(JSON.stringify(value)), key);
+    for (const [key, value] of Object.entries(entries))
+      transaction
+        .objectStore("records")
+        .put(JSON.parse(JSON.stringify(value)), key);
     transaction.oncomplete = () => {
       database.close();
       resolve();

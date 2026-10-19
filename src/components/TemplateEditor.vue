@@ -16,7 +16,7 @@ defineProps<{
   canCreateDirection: boolean;
   createDirection: (name: string) => Promise<string>;
 }>();
-defineEmits<{ removeAsset: [path: string] }>();
+defineEmits<{ removeAsset: [path: string]; manageDirections: [] }>();
 const metadataOpen = shallowRef(!note.value.title);
 const body = computed({
   get: () => noteBody(note.value),
@@ -40,6 +40,7 @@ const body = computed({
       :options="directions"
       :can-create="canCreateDirection"
       :create="createDirection"
+      @manage="$emit('manageDirections')"
     />
     <details
       :open="metadataOpen"

@@ -7,6 +7,10 @@ import { useReviewJobs } from "./useReviewJobs";
 import { useDirections } from "./useDirections";
 import {
   movedDirections,
+  changedDirections,
+  directionKey,
+  directionName,
+  type DirectionChange,
   type MoveNotesRequest,
 } from "../../shared/directions";
 import * as api from "../services/api";
@@ -16,6 +20,7 @@ import {
   removeLocalNote,
   getRecord,
   setRecord,
+  setRecords,
 } from "../services/storage";
 export function useWorkspace() {
   const configuration = ref<SiteConfig>({
@@ -41,6 +46,8 @@ export function useWorkspace() {
   );
   const notes = ref<NoteSummary[]>([]);
   const directions = useDirections(configuration, user, notes);
+  const directionManagerOpen = shallowRef(false);
+  const lastDirectionChange = shallowRef<DirectionChange | null>(null);
   const selectedNote = ref<Note | null>(null);
   const editingNote = ref<Note | null>(null);
   const view = shallowRef("library");
@@ -202,6 +209,83 @@ export function useWorkspace() {
       `已移动到“${input.target}”${remote.length ? "，GitHub 目录已同步。" : "（仅本机）。"}`,
     );
   }
+  async function changeDirection(input: DirectionChange) {
+    const change = {
+      name: directionName(input.name),
+      replacement:
+        input.replacement === null ? null : directionName(input.replacement),
+    };
+    if (!directions.canCreate.value)
+      throw new Error("请先登录有仓库写权限的 GitHub 账号。");
+    let local = await localNotes().catch(() => []);
+    let nextDirections: string[];
+    let nextRemote = remoteNotes.value;
+    if (configuration.value.configured) {
+      try {
+        const result = await api.changeDirection(change);
+        nextDirections = result.directions;
+        nextRemote = result.notes;
+      } catch (error) {
+        if (error instanceof api.ApiError && error.status === 401)
+          user.value = null;
+        throw error;
+      }
+    } else {
+      if (
+        change.replacement &&
+        directionKey(change.replacement) !== directionKey(change.name) &&
+        directions.options.value.some(
+          (n) => directionKey(n) === directionKey(change.replacement!),
+        )
+      )
+        throw new Error("该研究方向已存在，请使用其他名称。");
+      nextDirections = changedDirections(directions.options.value, change);
+    }
+    local = local.map((note) =>
+      note.tags.some((tag) => directionKey(tag) === directionKey(change.name))
+        ? {
+            ...note,
+            tags: changedDirections(note.tags, change),
+            revision: crypto.randomUUID(),
+            updatedAt: new Date().toISOString(),
+          }
+        : note,
+    );
+    if (!configuration.value.configured || local.length) {
+      try {
+        await setRecords({ "local-notes": local, directions: nextDirections });
+      } catch (error) {
+        if (!configuration.value.configured) throw error;
+        notify(
+          "GitHub 已同步；本机草稿更新失败，请保留草稿后重新选择方向。",
+          "error",
+        );
+      }
+    }
+    remoteNotes.value = nextRemote;
+    const localIds = new Set(local.map((n) => n.id));
+    notes.value = [
+      ...local.map(summarize),
+      ...nextRemote.filter((n) => !localIds.has(n.id)),
+    ];
+    directions.replace(nextDirections);
+    lastDirectionChange.value = change;
+    if (selectedNote.value) {
+      const latest = notes.value.find((n) => n.id === selectedNote.value!.id);
+      if (latest)
+        selectedNote.value = {
+          ...selectedNote.value,
+          tags: latest.tags,
+          revision: latest.revision,
+          updatedAt: latest.updatedAt,
+        };
+    }
+    notify(
+      change.replacement
+        ? "研究方向已重命名，笔记分类和目录已同步。"
+        : "研究方向已删除，所有笔记均已保留。",
+    );
+  }
   function login() {
     if (configuration.value.authConfigured) location.href = "/api/auth/login";
     else setupOpen.value = true;
@@ -335,6 +419,9 @@ export function useWorkspace() {
     pendingReviews,
     notes,
     directions,
+    directionManagerOpen,
+    lastDirectionChange,
+    changeDirection,
     selectedNote,
     editingNote,
     view,

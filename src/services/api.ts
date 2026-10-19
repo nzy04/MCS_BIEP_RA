@@ -1,6 +1,9 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
 import type { ReviewJobSummary } from "../../shared/review";
-import type { MoveNotesRequest } from "../../shared/directions";
+import type {
+  MoveNotesRequest,
+  DirectionChange,
+} from "../../shared/directions";
 export function moveNotes(
   input: MoveNotesRequest,
 ): Promise<{ notes: NoteSummary[]; commitUrl: string }> {
@@ -96,6 +99,18 @@ export function createDirection(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
+  });
+}
+export function changeDirection(change: DirectionChange): Promise<{
+  name: string | null;
+  directions: string[];
+  notes: NoteSummary[];
+  commitUrl: string;
+}> {
+  return api("/api/directions", {
+    method: change.replacement === null ? "DELETE" : "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
   });
 }
 export async function loadNote(id: string, connected: boolean): Promise<Note> {

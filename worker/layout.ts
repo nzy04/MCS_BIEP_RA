@@ -2,6 +2,7 @@ import {
   directionFolder,
   mergeDirections,
   noteFolders,
+  type DirectionCatalog,
 } from "../shared/directions";
 import { toMarkdown, type Note, type NoteSummary } from "../shared/note";
 import { github, HttpError, type Env, type Identity } from "./app";
@@ -50,8 +51,9 @@ export async function layoutEntries(
   after: NoteSummary[],
   changed: Note[],
   fetcher: typeof fetch,
+  catalogChange?: DirectionCatalog & { removed?: string[]; touch?: string[] },
 ): Promise<TreeEntry[]> {
-  const catalog = await readRepositoryJson<{ directions: string[] }>(
+  const catalog = await readRepositoryJson<DirectionCatalog>(
     env,
     user,
     "data/directions.json",
@@ -59,18 +61,31 @@ export async function layoutEntries(
     { directions: [] },
     fetcher,
   );
-  const directions = mergeDirections(
-    catalog.directions || [],
-    before.flatMap((n) => n.tags),
-    after.flatMap((n) => n.tags),
-  );
+  const directions =
+    catalogChange?.directions ??
+    mergeDirections(
+      catalog.directions || [],
+      before.flatMap((n) => n.tags),
+      after.flatMap((n) => n.tags),
+    );
   const entries = [
     file(
       "data/directions.json",
-      JSON.stringify({ version: 1, directions }, null, 2),
+      JSON.stringify(
+        {
+          ...catalog,
+          ...(catalogChange ? { retired: catalogChange.retired } : {}),
+          version: 1,
+          directions,
+        },
+        null,
+        2,
+      ),
     ),
   ];
   const affected = new Set(changed.flatMap((n) => noteFolders(n.tags)));
+  for (const name of catalogChange?.touch || [])
+    affected.add(directionFolder(name));
   const removed = new Set<string>();
   for (const note of changed) {
     for (const folder of noteFolders(note.tags))
@@ -83,6 +98,12 @@ export async function layoutEntries(
       if (!noteFolders(note.tags).includes(folder))
         removed.add(`${folder}/${note.id}.md`);
     }
+  }
+  for (const name of catalogChange?.removed || []) {
+    const folder = directionFolder(name);
+    if (directions.some((n) => directionFolder(n) === folder)) continue;
+    removed.add(`${folder}/README.md`);
+    affected.delete(folder);
   }
   let available: Set<string> | undefined;
   // GitHub rejects deletion of nonexistent files. Only remove verified generated paths.

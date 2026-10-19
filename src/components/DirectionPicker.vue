@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, shallowRef } from "vue";
 import {
   directionKey,
   mergeDirections,
   MAX_NOTE_DIRECTIONS,
 } from "../../shared/directions";
 import DirectionCreateForm from "./DirectionCreateForm.vue";
+defineEmits<{ manage: [] }>();
 const selected = defineModel<string[]>({ required: true });
 const props = defineProps<{
   options: string[];
@@ -13,6 +14,12 @@ const props = defineProps<{
   create: (name: string) => Promise<string>;
 }>();
 const options = computed(() => mergeDirections(props.options, selected.value));
+const query = shallowRef("");
+const filtered = computed(() =>
+  options.value.filter((n) =>
+    directionKey(n).includes(directionKey(query.value)),
+  ),
+);
 function isSelected(name: string) {
   return selected.value.some((n) => directionKey(n) === directionKey(name));
 }
@@ -35,8 +42,15 @@ function created(name: string) {
     <p class="direction-hint">
       选择已有方向，或新建自己的文件夹。最多选 {{ MAX_NOTE_DIRECTIONS }} 个。
     </p>
+    <input
+      v-model="query"
+      type="search"
+      class="picker-search"
+      aria-label="查找研究方向"
+      placeholder="搜索已有方向"
+    />
     <div v-if="options.length" class="direction-choices">
-      <label v-for="name in options" :key="name" class="direction-choice">
+      <label v-for="name in filtered" :key="name" class="direction-choice">
         <input
           type="checkbox"
           :checked="isSelected(name)"
@@ -56,6 +70,14 @@ function created(name: string) {
       :can-create="canCreate"
       @created="created"
     />
+    <button
+      v-if="canCreate"
+      type="button"
+      class="text-link"
+      @click="$emit('manage')"
+    >
+      管理研究方向
+    </button>
     <div class="direction-mode" role="status">
       <template v-if="selected.length"
         >已手动选择 {{ selected.length }} 个方向，发布时保留你的选择。</template
@@ -75,6 +97,10 @@ function created(name: string) {
   </fieldset>
 </template>
 <style scoped>
+.picker-search {
+  width: 100%;
+  margin: 0 0 12px;
+}
 .direction-picker {
   min-width: 0;
   padding: 16px;

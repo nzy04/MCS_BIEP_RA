@@ -9,6 +9,7 @@ import SetupDialog from "./components/SetupDialog.vue";
 import ProfileDialog from "./components/ProfileDialog.vue";
 import ReviewJobsView from "./components/ReviewJobsView.vue";
 import GuideView from "./components/GuideView.vue";
+import DirectionManager from "./components/DirectionManager.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -33,10 +34,12 @@ const app = useWorkspace();
     :create-direction="app.directions.create"
     :can-move="!!app.user.value?.canWrite"
     :move-notes="app.moveNotes"
+    :last-direction-change="app.lastDirectionChange.value"
     @open="app.openNote"
     @create="app.beginImport(undefined, $event)"
     @refresh="app.refresh"
     @setup="app.setupOpen.value = true"
+    @manage-directions="app.directionManagerOpen.value = true"
   /><GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
     v-else-if="app.view.value === 'reviews'"
     :jobs="app.reviews.jobs.value"
@@ -60,8 +63,10 @@ const app = useWorkspace();
     :directions="app.directions.options.value"
     :can-create-direction="app.directions.canCreate.value"
     :create-direction="app.directions.create"
+    :last-direction-change="app.lastDirectionChange.value"
     @back="app.navigate('library')"
     @login="app.login"
+    @manage-directions="app.directionManagerOpen.value = true"
   /><PaperReader
     v-else-if="app.selectedNote.value"
     :note="app.selectedNote.value"
@@ -83,6 +88,14 @@ const app = useWorkspace();
     :user="app.user.value"
     :save="app.saveProfile"
     @close="app.profileOpen.value = false"
+  />
+  <DirectionManager
+    v-if="app.directionManagerOpen.value && app.directions.canCreate.value"
+    :directions="app.directions.options.value"
+    :notes="app.notes.value"
+    :create="app.directions.create"
+    :change="app.changeDirection"
+    @close="app.directionManagerOpen.value = false"
   />
   <div
     v-if="app.message.value"

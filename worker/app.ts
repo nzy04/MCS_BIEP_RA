@@ -11,10 +11,19 @@ import {
 import type { ReviewQueueNamespace, ReviewReceipt } from "../shared/review";
 import { ownsNote } from "../shared/papers";
 import { profileSession, updateProfile, readRepositoryJson } from "./profile";
-import { createDirection, repositoryDirections } from "./directions";
+import {
+  createDirection,
+  changeDirection,
+  repositoryDirections,
+} from "./directions";
 import { layoutEntries } from "./layout";
 import { moveNotes } from "./move";
-import { directionName, mergeDirections } from "../shared/directions";
+import {
+  directionName,
+  directionKey,
+  mergeDirections,
+  type DirectionCatalog,
+} from "../shared/directions";
 import { checkDeepseek } from "./review";
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
@@ -450,6 +459,25 @@ export async function commitNote(
       );
     if (!previous && baseRevision)
       throw new HttpError(409, "原笔记已被移除，请先刷新论文库。");
+    const catalog = await readRepositoryJson<DirectionCatalog>(
+      env,
+      user,
+      "data/directions.json",
+      head.object.sha,
+      { directions: [] },
+      fetcher,
+    );
+    if (
+      note.tags.some((tag) =>
+        (catalog.retired || []).some(
+          (n) => directionKey(n) === directionKey(tag),
+        ),
+      )
+    )
+      throw new HttpError(
+        409,
+        "研究方向已重命名或删除，请刷新方向并重新选择后提交。",
+      );
     if (previous) note.createdAt = previous.createdAt;
     const incomingPaths = new Set(assets.map((a) => a.path));
     const oldAssets = new Set<string>();
@@ -855,6 +883,28 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         throw new HttpError(400, "研究方向格式不正确。");
       }
       return json(await createDirection(env, user, value?.name));
+    }
+    if (
+      path === "/api/directions" &&
+      ["PATCH", "DELETE"].includes(request.method)
+    ) {
+      requireOrigin(request);
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub，再管理研究方向。");
+      const raw = await request.text();
+      if (raw.length > 1024) throw new HttpError(413, "研究方向名称过长。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "研究方向格式不正确。");
+      }
+      return json(
+        await changeDirection(env, user, {
+          name: value?.name,
+          replacement: request.method === "DELETE" ? null : value?.replacement,
+        }),
+      );
     }
     if (path === "/api/notes/move" && request.method === "POST") {
       requireOrigin(request);

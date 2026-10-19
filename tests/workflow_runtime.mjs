@@ -210,9 +210,10 @@ async function call(
   body,
   auth = aliceCookie,
   origin = "https://site.test",
+  method = body === undefined ? "GET" : "POST",
 ) {
   const response = await mf.dispatchFetch(`https://site.test${route}`, {
-    method: body === undefined ? "GET" : "POST",
+    method,
     headers: {
       Cookie: auth,
       Origin: origin,
@@ -349,6 +350,40 @@ try {
       .status,
     404,
   );
+  const originalBody = files.get(`data/notes/${first.id}.json`);
+  assert.equal(
+    (
+      await call(
+        "/api/directions",
+        { name: "方向乙", replacement: "重命名方向" },
+        aliceCookie,
+        "https://site.test",
+        "PATCH",
+      )
+    ).status,
+    200,
+  );
+  assert.ok(!files.has(`papers/方向-方向乙/${first.id}.md`));
+  assert.ok(files.has(`papers/方向-重命名方向/${first.id}.md`));
+  await restart();
+  assert.equal(
+    (
+      await call(
+        "/api/directions",
+        { name: "重命名方向" },
+        aliceCookie,
+        "https://site.test",
+        "DELETE",
+      )
+    ).status,
+    200,
+  );
+  const afterDelete = JSON.parse(files.get(`data/notes/${first.id}.json`));
+  assert.equal(afterDelete.body, JSON.parse(originalBody).body);
+  assert.deepEqual(afterDelete.tags, []);
+  assert.ok(files.has(`papers/_未分类/${first.id}.md`));
+  assert.ok(!files.has("papers/方向-重命名方向/README.md"));
+  assert.ok(Buffer.from(files.get(imagePath)).equals(image));
   const baseline = JSON.stringify((await call("/api/library")).body);
   const soakSeconds = Math.min(
     600,
@@ -381,6 +416,7 @@ try {
     ambiguousWriteRetryWithoutDuplicate: true,
     modelCalls,
     directionsAndMoves: true,
+    directionRenameAndDelete: true,
     nickname: true,
     multipleContributors: true,
     rejectionNoWrite: true,

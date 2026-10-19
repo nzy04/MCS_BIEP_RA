@@ -17,6 +17,7 @@ import {
 } from "../worker/app";
 import { profileSession, updateProfile } from "../worker/profile";
 import { moveNotes } from "../worker/move";
+import { changeDirection, createDirection } from "../worker/directions";
 import {
   directionFolder,
   noteFolders,
@@ -578,4 +579,270 @@ test("历史笔记增多后改名仍在免费请求预算内完成全部同步",
       repo.files.get(`${directionFolder("共同方向")}/${n.id}.md`)!,
       /长期署名/,
     );
+});
+
+test("重命名方向原子更新多人笔记、目录和阅读版，保留正文、其他方向、图片与 PDF 链接", async () => {
+  const a = {
+    ...makeNote(),
+    tags: ["旧方向", "其他方向"],
+    body: "我的原始图文内容",
+    pdfUrl: "https://arxiv.org/pdf/2601.12345",
+  };
+  a.assets = [
+    { path: `assets/uploads/${a.id}/figure.png`, mime: "image/png", size: 3 },
+  ];
+  const b = { ...makeNote(bob), tags: ["旧方向"] };
+  const repo = repository([a, b]);
+  repo.files.set(a.assets[0].path, "IMG");
+  repo.files.set(
+    "data/directions.json",
+    JSON.stringify({
+      version: 1,
+      directions: ["旧方向", "其他方向", "空目录"],
+    }),
+  );
+  repo.files.set(`${directionFolder("旧方向")}/README.md`, "old");
+  for (const n of [a, b])
+    repo.files.set(`${directionFolder("旧方向")}/${n.id}.md`, toMarkdown(n));
+  const result = await changeDirection(
+    env,
+    bob,
+    { name: "旧方向", replacement: "新方向 / A" },
+    repo.fetcher,
+  );
+  assert.equal(repo.patches(), 1);
+  assert.deepEqual(result.directions, ["新方向 / A", "其他方向", "空目录"]);
+  assert.ok(
+    ![...repo.files.keys()].some((p) =>
+      p.startsWith(directionFolder("旧方向") + "/"),
+    ),
+  );
+  for (const original of [a, b]) {
+    const next = JSON.parse(repo.files.get(`data/notes/${original.id}.json`)!);
+    assert.equal(next.body, original.body);
+    assert.equal(next.author, original.author);
+    assert.deepEqual(next.assets, original.assets);
+    assert.equal(next.pdfUrl, original.pdfUrl);
+    assert.notEqual(next.revision, original.revision);
+    assert.ok(
+      repo.files
+        .get(`${directionFolder("新方向 / A")}/${original.id}.md`)!
+        .includes(original.author),
+    );
+  }
+  assert.deepEqual(result.notes[0].tags, ["新方向 / A", "其他方向"]);
+  assert.equal(repo.files.get(a.assets[0].path), "IMG");
+  assert.deepEqual(
+    JSON.parse(repo.files.get("data/directions.json")!).retired,
+    ["旧方向"],
+  );
+});
+
+test("删除非空方向保留全部笔记及图片，单方向笔记移入未分类，重复删除幂等", async () => {
+  const a = { ...makeNote(), tags: ["待删除", "保留方向"] };
+  const b = { ...makeNote(bob), tags: ["待删除"] };
+  const repo = repository([a, b]);
+  repo.files.set(
+    "data/directions.json",
+    JSON.stringify({ version: 1, directions: ["待删除", "保留方向"] }),
+  );
+  repo.files.set(`${directionFolder("待删除")}/README.md`, "old");
+  const result = await changeDirection(
+    env,
+    alice,
+    { name: "待删除", replacement: null },
+    repo.fetcher,
+  );
+  assert.deepEqual(result.directions, ["保留方向"]);
+  assert.equal(result.notes.length, 2);
+  assert.deepEqual(result.notes[0].tags, ["保留方向"]);
+  assert.deepEqual(result.notes[1].tags, []);
+  assert.ok(repo.files.has(`papers/_未分类/${b.id}.md`));
+  assert.ok(repo.files.get("papers/_未分类/README.md")!.includes(b.id));
+  assert.ok(!repo.files.has(`${directionFolder("待删除")}/README.md`));
+  assert.equal(
+    JSON.parse(repo.files.get(`data/notes/${b.id}.json`)!).author,
+    "Bob",
+  );
+  await changeDirection(
+    env,
+    alice,
+    { name: "待删除", replacement: null },
+    repo.fetcher,
+  );
+  assert.equal(repo.patches(), 1);
+});
+
+test("空方向可重命名和删除，冲突名称与无权限操作不修改仓库", async () => {
+  const repo = repository();
+  await createDirection(env, alice, "空方向", repo.fetcher);
+  await createDirection(env, alice, "已有方向", repo.fetcher);
+  const before = new Map(repo.files);
+  for (const replacement of ["已有方向", "<bad>", ""]) {
+    await assert.rejects(() =>
+      changeDirection(
+        env,
+        alice,
+        { name: "空方向", replacement },
+        repo.fetcher,
+      ),
+    );
+    assert.deepEqual(repo.files, before);
+  }
+  await assert.rejects(
+    () =>
+      changeDirection(
+        env,
+        alice,
+        { name: "空方向", replacement: null },
+        repository([], { writable: false }).fetcher,
+      ),
+    /写入权限/,
+  );
+  await changeDirection(
+    env,
+    alice,
+    { name: "空方向", replacement: "重命名后" },
+    repo.fetcher,
+  );
+  assert.ok(repo.files.has(`${directionFolder("重命名后")}/README.md`));
+  assert.ok(!repo.files.has(`${directionFolder("空方向")}/README.md`));
+  await changeDirection(
+    env,
+    alice,
+    { name: "重命名后", replacement: null },
+    repo.fetcher,
+  );
+  assert.ok(!repo.files.has(`${directionFolder("重命名后")}/README.md`));
+  await createDirection(env, alice, "重命名后", repo.fetcher);
+  assert.ok(
+    !JSON.parse(repo.files.get("data/directions.json")!).retired.includes(
+      "重命名后",
+    ),
+  );
+});
+
+test("整理方向遇到并发发布会重读合并，缺失笔记时不部分改名", async () => {
+  const a = { ...makeNote(), tags: ["原方向"] };
+  const repo = repository([a], { conflict: true });
+  const result = await changeDirection(
+    env,
+    alice,
+    { name: "原方向", replacement: "新方向" },
+    repo.fetcher,
+  );
+  assert.equal(repo.patches(), 2);
+  assert.equal(result.notes.length, 2);
+  assert.ok(result.notes.some((n) => n.authorLogin === "bob"));
+  const broken = repository([a], { missing: `data/notes/${a.id}.json` });
+  const before = new Map(broken.files);
+  await assert.rejects(
+    () =>
+      changeDirection(
+        env,
+        alice,
+        { name: "原方向", replacement: null },
+        broken.fetcher,
+      ),
+    /目录不一致/,
+  );
+  assert.equal(broken.patches(), 0);
+  assert.deepEqual(broken.files, before);
+});
+
+test("历史草稿不能恢复已删除方向，其他写操作保留删除记录", async () => {
+  const a = { ...makeNote(), tags: ["已删除"] };
+  const repo = repository([a]);
+  await changeDirection(
+    env,
+    alice,
+    { name: "已删除", replacement: null },
+    repo.fetcher,
+  );
+  await updateProfile(env, alice, "新昵称", repo.fetcher);
+  const stale = { ...makeNote(), tags: ["已删除"] };
+  const before = repo.patches();
+  await assert.rejects(
+    () => commitNote(env, alice, { note: stale, assets: [] }, repo.fetcher),
+    /方向已重命名或删除/,
+  );
+  assert.equal(repo.patches(), before);
+  assert.deepEqual(
+    JSON.parse(repo.files.get("data/directions.json")!).retired,
+    ["已删除"],
+  );
+});
+
+test("大方向批量重命名在免费请求预算内同步全部笔记，超限不提交", async () => {
+  const originals = Array.from({ length: 80 }, () => ({
+    ...makeNote(),
+    tags: ["旧方向"],
+  }));
+  const repo = repository(originals);
+  let requests = 0;
+  const bounded: typeof fetch = async (input, init) => {
+    if (++requests > 50)
+      throw new Error("free plan subrequest budget exceeded");
+    return repo.fetcher(input, init);
+  };
+  const result = await changeDirection(
+    env,
+    alice,
+    { name: "旧方向", replacement: "新方向" },
+    bounded,
+  );
+  assert.equal(result.notes.length, 80);
+  assert.ok(result.notes.every((n) => n.tags[0] === "新方向"));
+  assert.ok(requests < 30);
+  const large = repository(
+    Array.from({ length: 251 }, () => ({ ...makeNote(), tags: ["太大"] })),
+  );
+  await assert.rejects(
+    () =>
+      changeDirection(
+        env,
+        alice,
+        { name: "太大", replacement: null },
+        large.fetcher,
+      ),
+    /250/,
+  );
+  assert.equal(large.patches(), 0);
+});
+
+test("方向修改和删除接口防跨站及未登录，权限不足或畸形输入不修改目录", async () => {
+  const repo = repository();
+  const previous = globalThis.fetch;
+  globalThis.fetch = repo.fetcher;
+  try {
+    const cookie = `mcs_session=${await seal(alice, env.SESSION_SECRET)}`;
+    for (const method of ["PATCH", "DELETE"]) {
+      const request = (origin: string, auth: string, body: string) =>
+        new Request("https://site.test/api/directions", {
+          method,
+          headers: { Origin: origin, Cookie: auth },
+          body,
+        });
+      assert.equal(
+        (await handle(request("https://evil.test", cookie, "{}"), env)).status,
+        403,
+      );
+      assert.equal(
+        (await handle(request("https://site.test", "", "{}"), env)).status,
+        401,
+      );
+      assert.equal(
+        (await handle(request("https://site.test", cookie, "bad json"), env))
+          .status,
+        400,
+      );
+      assert.equal(
+        (await handle(request("https://site.test", cookie, "{}"), env)).status,
+        400,
+      );
+    }
+    assert.equal(repo.patches(), 0);
+  } finally {
+    globalThis.fetch = previous;
+  }
 });

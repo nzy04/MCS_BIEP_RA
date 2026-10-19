@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, shallowRef } from "vue";
+import { computed, shallowRef, watch } from "vue";
 import { Search } from "lucide-vue-next";
 import type { NoteSummary, SiteConfig } from "../../shared/note";
 import { groupPapers, countContributors } from "../../shared/papers";
 import { directionKey, mergeDirections } from "../../shared/directions";
-import type { MoveNotesRequest } from "../../shared/directions";
+import type {
+  MoveNotesRequest,
+  DirectionChange,
+} from "../../shared/directions";
 import { useLibraryMoves } from "../composables/useLibraryMoves";
 import PaperCard from "./PaperCard.vue";
 import LibraryToolbar from "./LibraryToolbar.vue";
@@ -19,12 +22,14 @@ const props = defineProps<{
   createDirection: (name: string) => Promise<string>;
   canMove: boolean;
   moveNotes: (request: MoveNotesRequest) => Promise<void>;
+  lastDirectionChange: DirectionChange | null;
 }>();
 defineEmits<{
   open: [id: string];
   create: [direction?: string];
   refresh: [];
   setup: [];
+  manageDirections: [];
 }>();
 const query = shallowRef("");
 const selectedTag = shallowRef<string | null>(null);
@@ -41,6 +46,9 @@ const tags = computed(() =>
   ).sort((a, b) => a.localeCompare(b, "zh-CN")),
 );
 const papers = computed(() => groupPapers(props.notes));
+const unclassified = computed(
+  () => groupPapers(props.notes.filter((n) => !n.tags.length)).length,
+);
 const authors = computed(() => countContributors(props.notes));
 const tagCounts = computed(
   () =>
@@ -58,6 +66,7 @@ const filtered = computed(() =>
     props.notes.filter(
       (n) =>
         selectedTag.value === null ||
+        (selectedTag.value === "" && !n.tags.length) ||
         n.tags.some(
           (t) => directionKey(t) === directionKey(selectedTag.value!),
         ),
@@ -78,6 +87,17 @@ const filtered = computed(() =>
         ? b.note.year.localeCompare(a.note.year)
         : b.updatedAt.localeCompare(a.updatedAt),
     ),
+);
+watch(
+  () => props.lastDirectionChange,
+  (change) => {
+    if (
+      change &&
+      selectedTag.value &&
+      directionKey(selectedTag.value) === directionKey(change.name)
+    )
+      selectedTag.value = change.replacement;
+  },
 );
 function resetFilters() {
   query.value = "";
@@ -107,11 +127,13 @@ function resetFilters() {
         :directions="tags"
         :counts="tagCounts"
         :total="papers.length"
+        :unclassified="unclassified"
         :can-create="canCreateDirection"
         :create="createDirection"
         :dragging="!!moves.dragging.value.length"
         :busy="moves.busy.value"
         @drop="moves.drop"
+        @manage="$emit('manageDirections')"
       />
       <section class="library-results" aria-label="文献列表">
         <LibraryToolbar
@@ -121,7 +143,9 @@ function resetFilters() {
           @refresh="$emit('refresh')"
         />
         <div class="library-title-row">
-          <h2>{{ selectedTag === null ? "全部文献" : selectedTag }}</h2>
+          <h2>
+            {{ selectedTag === null ? "全部文献" : selectedTag || "未分类" }}
+          </h2>
           <span class="result-count"
             >{{ filtered.length }} 篇<span v-if="query">
               · {{ query }}</span
@@ -181,10 +205,10 @@ function resetFilters() {
             :paper="paper"
             :can-move="movable(paper.notes) && !moves.busy.value"
             @drag-notes="
-              (event, notes) => moves.start(event, notes, selectedTag)
+              (event, notes) => moves.start(event, notes, selectedTag || null)
             "
             @drag-end="moves.end"
-            @move="moves.choose($event, selectedTag)"
+            @move="moves.choose($event, selectedTag || null)"
             @open="$emit('open', $event)"
           />
         </div>

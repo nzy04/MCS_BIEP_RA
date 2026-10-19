@@ -1,5 +1,31 @@
 export const MAX_NOTE_DIRECTIONS = 8;
 
+export interface DirectionCatalog {
+  version?: number;
+  directions: string[];
+  retired?: string[];
+}
+
+export interface DirectionChange {
+  name: string;
+  replacement: string | null;
+}
+
+export function changedDirections(
+  tags: string[],
+  change: DirectionChange,
+): string[] {
+  return mergeDirections(
+    tags.flatMap((name) =>
+      directionKey(name) === directionKey(change.name)
+        ? change.replacement === null
+          ? []
+          : [change.replacement]
+        : [name],
+    ),
+  );
+}
+
 export interface MoveNotesRequest {
   notes: { id: string; revision: string }[];
   source: string | null;

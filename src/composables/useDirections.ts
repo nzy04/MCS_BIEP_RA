@@ -49,5 +49,8 @@ export function useDirections(
     await setRecord("directions", folders.value);
     return canonical;
   }
-  return { options, canCreate, refresh, create };
+  function replace(names: string[]) {
+    folders.value = mergeDirections(names);
+  }
+  return { options, canCreate, refresh, create, replace };
 }

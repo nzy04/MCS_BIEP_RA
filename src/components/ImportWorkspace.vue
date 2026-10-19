@@ -21,6 +21,10 @@ import {
   type Session,
 } from "../../shared/note";
 import { noteBody } from "../../shared/document";
+import {
+  changedDirections,
+  type DirectionChange,
+} from "../../shared/directions";
 import { exportNotePackage } from "../services/notePackage";
 import { useImporter } from "../composables/useImporter";
 import { getRecord } from "../services/storage";
@@ -35,8 +39,9 @@ const props = defineProps<{
   directions: string[];
   canCreateDirection: boolean;
   createDirection: (name: string) => Promise<string>;
+  lastDirectionChange: DirectionChange | null;
 }>();
-const emit = defineEmits<{ back: []; login: [] }>();
+const emit = defineEmits<{ back: []; login: []; manageDirections: [] }>();
 const {
   draft,
   baseRevision,
@@ -58,6 +63,12 @@ const {
   recover,
   clearDraft,
 } = useImporter(props.existing);
+watch(
+  () => props.lastDirectionChange,
+  (change) => {
+    if (change) draft.value.tags = changedDirections(draft.value.tags, change);
+  },
+);
 const hasDraft = shallowRef(false);
 const initialized = shallowRef(false);
 function syncAuthor() {
@@ -255,6 +266,7 @@ async function downloadPackage() {
             :paper-file="paperFile"
             :add-image="addImage"
             @remove-asset="removeAsset"
+            @manage-directions="$emit('manageDirections')"
           />
         </section>
         <aside class="source-panel">
