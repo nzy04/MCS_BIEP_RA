@@ -1,5 +1,15 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
 import type { ReviewJobSummary } from "../../shared/review";
+import type { MoveNotesRequest } from "../../shared/directions";
+export function moveNotes(
+  input: MoveNotesRequest,
+): Promise<{ notes: NoteSummary[]; commitUrl: string }> {
+  return api("/api/notes/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
 export class ApiError extends Error {
   constructor(
     public status: number,

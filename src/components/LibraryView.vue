@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, shallowRef } from "vue";
-import { Search, Folder } from "lucide-vue-next";
+import { Search } from "lucide-vue-next";
 import type { NoteSummary, SiteConfig } from "../../shared/note";
 import { groupPapers, countContributors } from "../../shared/papers";
 import { directionKey, mergeDirections } from "../../shared/directions";
+import type { MoveNotesRequest } from "../../shared/directions";
+import { useLibraryMoves } from "../composables/useLibraryMoves";
 import PaperCard from "./PaperCard.vue";
 import LibraryToolbar from "./LibraryToolbar.vue";
-import DirectionCreateForm from "./DirectionCreateForm.vue";
+import ResearchSidebar from "./ResearchSidebar.vue";
+import MoveNotesDialog from "./MoveNotesDialog.vue";
 const props = defineProps<{
   notes: NoteSummary[];
   config: SiteConfig;
@@ -14,6 +17,8 @@ const props = defineProps<{
   directions: string[];
   canCreateDirection: boolean;
   createDirection: (name: string) => Promise<string>;
+  canMove: boolean;
+  moveNotes: (request: MoveNotesRequest) => Promise<void>;
 }>();
 defineEmits<{
   open: [id: string];
@@ -25,6 +30,10 @@ const query = shallowRef("");
 const selectedTag = shallowRef<string | null>(null);
 const sort = shallowRef("recent");
 const layout = shallowRef("list");
+const moves = useLibraryMoves(props.moveNotes);
+function movable(notes: NoteSummary[]) {
+  return notes.every((n) => n.local || props.canMove);
+}
 const tags = computed(() =>
   mergeDirections(
     props.directions,
@@ -45,21 +54,24 @@ const tagCounts = computed(
     ),
 );
 const filtered = computed(() =>
-  papers.value
-    .filter(
+  groupPapers(
+    props.notes.filter(
       (n) =>
-        (selectedTag.value === null ||
-          n.tags.some(
-            (t) => directionKey(t) === directionKey(selectedTag.value!),
-          )) &&
-        n.notes
-          .map(
-            (note) =>
-              `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`,
-          )
-          .join(" ")
-          .toLowerCase()
-          .includes(query.value.toLowerCase()),
+        selectedTag.value === null ||
+        n.tags.some(
+          (t) => directionKey(t) === directionKey(selectedTag.value!),
+        ),
+    ),
+  )
+    .filter((n) =>
+      n.notes
+        .map(
+          (note) =>
+            `${note.title} ${note.subtitle} ${note.excerpt} ${note.author} ${note.authorLogin} ${note.tags.join(" ")}`,
+        )
+        .join(" ")
+        .toLowerCase()
+        .includes(query.value.toLowerCase()),
     )
     .sort((a, b) =>
       sort.value === "year"
@@ -90,31 +102,17 @@ function resetFilters() {
       </section>
     </header>
     <div class="library-content">
-      <aside class="topics" aria-label="研究方向">
-        <h2 class="sidebar-heading">研究方向</h2>
-        <button
-          :class="{ selected: selectedTag === null }"
-          :aria-pressed="selectedTag === null"
-          @click="selectedTag = null"
-        >
-          全部文献 <span>{{ papers.length }}</span>
-        </button>
-        <button
-          v-for="tag in tags"
-          :key="tag"
-          :class="{ selected: selectedTag === tag }"
-          :aria-pressed="selectedTag === tag"
-          @click="selectedTag = tag"
-        >
-          <span class="direction-name"><Folder :size="14" />{{ tag }}</span
-          ><span>{{ tagCounts.get(tag) }}</span>
-        </button>
-        <DirectionCreateForm
-          v-if="canCreateDirection"
-          :create="createDirection"
-          @created="selectedTag = $event"
-        />
-      </aside>
+      <ResearchSidebar
+        v-model="selectedTag"
+        :directions="tags"
+        :counts="tagCounts"
+        :total="papers.length"
+        :can-create="canCreateDirection"
+        :create="createDirection"
+        :dragging="!!moves.dragging.value.length"
+        :busy="moves.busy.value"
+        @drop="moves.drop"
+      />
       <section class="library-results" aria-label="文献列表">
         <LibraryToolbar
           v-model:query="query"
@@ -130,6 +128,14 @@ function resetFilters() {
             ></span
           >
         </div>
+        <p
+          v-if="moves.error.value && !moves.choosing.value.length"
+          class="move-error"
+          role="alert"
+        >
+          {{ moves.error.value }}
+        </p>
+        <p v-if="moves.busy.value" role="status">正在同步目录…</p>
         <div v-if="loading" class="empty-state">正在加载…</div>
         <div v-else-if="!filtered.length" class="empty-state">
           <Search :size="24" />
@@ -173,6 +179,12 @@ function resetFilters() {
             v-for="paper in filtered"
             :key="paper.id"
             :paper="paper"
+            :can-move="movable(paper.notes) && !moves.busy.value"
+            @drag-notes="
+              (event, notes) => moves.start(event, notes, selectedTag)
+            "
+            @drag-end="moves.end"
+            @move="moves.choose($event, selectedTag)"
             @open="$emit('open', $event)"
           />
         </div>
@@ -182,17 +194,21 @@ function resetFilters() {
         </div>
       </section>
     </div>
+    <MoveNotesDialog
+      v-if="moves.choosing.value.length"
+      :count="moves.choosing.value.length"
+      :source="moves.pendingSource.value"
+      :directions="tags"
+      :busy="moves.busy.value"
+      :error="moves.error.value"
+      @move="moves.confirm"
+      @close="moves.choosing.value = []"
+    />
   </main>
 </template>
 <style scoped>
-.direction-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.direction-name svg {
-  flex-shrink: 0;
+.move-error {
+  color: #b42318;
+  margin: 12px 0;
 }
 </style>

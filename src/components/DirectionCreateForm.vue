@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { shallowRef } from "vue";
 import { FolderPlus } from "lucide-vue-next";
-const props = defineProps<{ create: (name: string) => Promise<string> }>();
+const props = withDefaults(
+  defineProps<{
+    create: (name: string) => Promise<string>;
+    canCreate?: boolean;
+  }>(),
+  { canCreate: true },
+);
 const emit = defineEmits<{ created: [name: string] }>();
 const open = shallowRef(false),
   name = shallowRef(""),
@@ -9,6 +15,10 @@ const open = shallowRef(false),
   error = shallowRef("");
 async function submit() {
   if (busy.value) return;
+  if (!props.canCreate) {
+    error.value = "请先登录有仓库写入权限的 GitHub 账号。";
+    return;
+  }
   error.value = "";
   busy.value = true;
   try {
@@ -44,10 +54,21 @@ async function submit() {
           required
       /></label>
       <p v-if="error" class="direction-error" role="alert">{{ error }}</p>
+      <p v-if="!canCreate" class="direction-error">
+        登录有仓库写入权限的 GitHub 账号后创建。
+      </p>
       <div class="direction-actions">
-        <button class="button primary small" type="submit" :disabled="busy">
+        <button
+          v-if="canCreate"
+          class="button primary small"
+          type="submit"
+          :disabled="busy"
+        >
           {{ busy ? "正在创建…" : "创建方向" }}
         </button>
+        <a v-else class="button primary small" href="/api/auth/login"
+          >登录 GitHub</a
+        >
         <button
           class="button ghost small"
           type="button"

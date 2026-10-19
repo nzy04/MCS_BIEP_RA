@@ -44,14 +44,14 @@ export function meaningfulBody(body: string): boolean {
 }
 
 /** Paths in the website's JSON are relative to the repository root. */
-export function githubBody(body: string): string {
+export function githubBody(body: string, rootPrefix = "../"): string {
   return body
     .replace(
       /(\]\(<?|\bsrc=["'])(?:\.\/|\/)?assets\/uploads\//g,
-      "$1../assets/uploads/",
+      `$1${rootPrefix}assets/uploads/`,
     )
     .replace(
       /(^\s*\[[^\]]+\]:\s*<?)(?:\.\/|\/)?assets\/uploads\//gm,
-      "$1../assets/uploads/",
+      `$1${rootPrefix}assets/uploads/`,
     );
 }

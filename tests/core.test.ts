@@ -151,6 +151,8 @@ function fakeGit(options: { conflict?: boolean; writable?: boolean } = {}) {
           })
         : reply({}, 404);
     if (path.includes("/contents/data/authors/")) return reply({}, 404);
+    if (path.includes("/contents/data/directions.json")) return reply({}, 404);
+    if (path.includes("/git/trees/")) return reply({ tree: [] });
     if (path.endsWith("/git/blobs")) {
       const id = `blob${blobs.size}`;
       blobs.set(
@@ -182,7 +184,7 @@ function fakeGit(options: { conflict?: boolean; writable?: boolean } = {}) {
       pendingFiles = trees.get(commit.tree);
       for (const file of pendingFiles) {
         if (file.path === "data/library.json")
-          index = JSON.parse(blobs.get(file.sha)!);
+          index = JSON.parse(file.content ?? blobs.get(file.sha)!);
         if (file.path.startsWith("data/notes/"))
           oldNote = JSON.parse(blobs.get(file.sha)!);
       }
@@ -209,7 +211,14 @@ test("一次提交包含笔记、Markdown 和索引，身份来自会话且不�
   );
   assert.equal(result.note.authorLogin, "member");
   assert.ok(result.commitUrl.includes("/commit/"));
-  assert.equal(git.read().pendingFiles.length, 3);
+  assert.ok(
+    git
+      .read()
+      .pendingFiles.some((f: any) => f.path === `papers/_未分类/${n.id}.md`),
+  );
+  assert.ok(
+    git.read().pendingFiles.some((f: any) => f.path === "data/directions.json"),
+  );
   assert.equal(git.read().index.notes[0].title, n.title);
   assert.equal(git.read().oldNote.sections.summary, n.sections.summary);
   assert.equal(git.read().oldNote.pdfUrl, n.pdfUrl);
@@ -324,7 +333,7 @@ test("真实附件大小的 base64 不会使校验正则溢出", async () => {
     },
     git.fetcher,
   );
-  assert.equal(git.read().pendingFiles.length, 4);
+  assert.ok(git.read().pendingFiles.some((file: any) => file.path === path));
 });
 test("更新笔记时只移除该笔记已不再使用的附件", async () => {
   const n = note(),

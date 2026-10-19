@@ -1,13 +1,25 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PaperGroup } from "../../shared/papers";
+import type { NoteSummary } from "../../shared/note";
 import NoteOptions from "./NoteOptions.vue";
-const props = defineProps<{ paper: PaperGroup }>();
+const props = defineProps<{ paper: PaperGroup; canMove?: boolean }>();
 const note = computed(() => props.paper.note);
-defineEmits<{ open: [id: string] }>();
+defineEmits<{
+  open: [id: string];
+  move: [notes: NoteSummary[]];
+  dragNotes: [event: DragEvent, notes: NoteSummary[]];
+  dragEnd: [];
+}>();
 </script>
 <template>
-  <article class="paper-card">
+  <article
+    class="paper-card"
+    :class="{ movable: canMove }"
+    :draggable="!!canMove"
+    @dragstart="canMove && $emit('dragNotes', $event, paper.notes)"
+    @dragend="$emit('dragEnd')"
+  >
     <div class="paper-entry">
       <div class="card-top">
         <span v-if="note.venue || note.year" class="venue-label"
@@ -31,7 +43,14 @@ defineEmits<{ open: [id: string] }>();
       <div v-if="paper.tags.length" class="card-tags">
         <span v-for="tag in paper.tags" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <NoteOptions :notes="paper.notes" @open="$emit('open', $event)" />
+      <NoteOptions
+        :notes="paper.notes"
+        :can-move="canMove"
+        @open="$emit('open', $event)"
+        @move="$emit('move', [$event])"
+        @drag-note="(event, note) => $emit('dragNotes', event, [note])"
+        @drag-end="$emit('dragEnd')"
+      />
     </div>
     <div class="card-side">
       <div class="card-footer">
@@ -45,6 +64,13 @@ defineEmits<{ open: [id: string] }>();
         }}</time>
       </div>
       <div class="paper-actions">
+        <button
+          v-if="canMove"
+          class="text-link move-paper"
+          @click="$emit('move', paper.notes)"
+        >
+          移动{{ paper.notes.length > 1 ? "全部笔记" : "笔记" }}
+        </button>
         <a :href="`#paper/${note.id}`" @click.prevent="$emit('open', note.id)"
           >阅读笔记</a
         ><a
@@ -70,3 +96,14 @@ defineEmits<{ open: [id: string] }>();
     </div>
   </article>
 </template>
+<style scoped>
+.paper-card.movable {
+  cursor: grab;
+}
+.paper-card.movable:active {
+  cursor: grabbing;
+}
+.move-paper {
+  font-size: inherit;
+}
+</style>

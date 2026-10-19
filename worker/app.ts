@@ -2,7 +2,6 @@ import {
   sectionDefinitions,
   structureText,
   summarize,
-  toMarkdown,
   validateNote,
   type Note,
   type NoteSummary,
@@ -13,6 +12,8 @@ import type { ReviewQueueNamespace, ReviewReceipt } from "../shared/review";
 import { ownsNote } from "../shared/papers";
 import { profileSession, updateProfile } from "./profile";
 import { createDirection, repositoryDirections } from "./directions";
+import { layoutEntries } from "./layout";
+import { moveNotes } from "./move";
 import { directionName, mergeDirections } from "../shared/directions";
 import { checkDeepseek } from "./review";
 export interface Env {
@@ -478,11 +479,6 @@ export async function commitNote(
         encoding: "utf-8",
       },
       {
-        path: `papers/${note.id}.md`,
-        content: toMarkdown(note),
-        encoding: "utf-8",
-      },
-      {
         path: "data/library.json",
         content: JSON.stringify(next, null, 2),
         encoding: "utf-8",
@@ -511,6 +507,16 @@ export async function commitNote(
         return { path: file.path, mode: "100644", type: "blob", sha: blob.sha };
       }),
     );
+    const categorized = await layoutEntries(
+      env,
+      user,
+      head.object.sha,
+      headCommit.tree.sha,
+      index.notes,
+      next.notes,
+      [note],
+      fetcher,
+    );
     const tree = await github<any>(
       env,
       `${root}/git/trees`,
@@ -521,6 +527,7 @@ export async function commitNote(
           base_tree: headCommit.tree.sha,
           tree: [
             ...treeEntries,
+            ...categorized,
             ...[...oldAssets]
               .filter((path) => !note.assets.some((a) => a.path === path))
               .map((path) => ({
@@ -824,6 +831,21 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         throw new HttpError(400, "研究方向格式不正确。");
       }
       return json(await createDirection(env, user, value?.name));
+    }
+    if (path === "/api/notes/move" && request.method === "POST") {
+      requireOrigin(request);
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub，再移动笔记。");
+      const raw = await request.text();
+      if (raw.length > 12000)
+        throw new HttpError(413, "每次最多移动 30 份笔记。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "移动请求格式不正确。");
+      }
+      return json(await moveNotes(env, user, value));
     }
     const noteMatch = path.match(/^\/api\/notes\/(note-[a-f0-9-]{36})$/);
     if (noteMatch && request.method === "GET") {

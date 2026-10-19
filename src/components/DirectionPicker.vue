@@ -51,7 +51,11 @@ function created(name: string) {
     <p v-else class="direction-hint">
       还没有研究方向，可以新建，也可以留空自动归类。
     </p>
-    <DirectionCreateForm v-if="canCreate" :create="create" @created="created" />
+    <DirectionCreateForm
+      :create="create"
+      :can-create="canCreate"
+      @created="created"
+    />
     <div class="direction-mode" role="status">
       <template v-if="selected.length"
         >已手动选择 {{ selected.length }} 个方向，发布时保留你的选择。</template

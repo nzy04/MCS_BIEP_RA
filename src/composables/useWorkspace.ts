@@ -5,6 +5,10 @@ import { groupPapers, ownsNote } from "../../shared/papers";
 import { reviewPending } from "../../shared/review";
 import { useReviewJobs } from "./useReviewJobs";
 import { useDirections } from "./useDirections";
+import {
+  movedDirections,
+  type MoveNotesRequest,
+} from "../../shared/directions";
 import * as api from "../services/api";
 import {
   localNotes,
@@ -168,6 +172,36 @@ export function useWorkspace() {
       editingNote.value.author = result.user.name;
     notify("昵称已保存，历史笔记署名已同步。");
   }
+  async function moveNotes(input: MoveNotesRequest) {
+    const local = await localNotes();
+    const localIds = new Set(local.map((n) => n.id));
+    const remote = input.notes.filter((n) => !localIds.has(n.id));
+    if (remote.length) {
+      try {
+        const result = await api.moveNotes({ ...input, notes: remote });
+        remoteNotes.value = result.notes;
+      } catch (error) {
+        if (error instanceof api.ApiError && error.status === 401)
+          user.value = null;
+        throw error;
+      }
+    }
+    for (const note of local) {
+      if (input.notes.some((n) => n.id === note.id)) {
+        note.tags = movedDirections(note.tags, input.source, input.target);
+        note.updatedAt = new Date().toISOString();
+      }
+    }
+    if (input.notes.some((n) => localIds.has(n.id)))
+      await setRecord("local-notes", local);
+    notes.value = [
+      ...local.map(summarize),
+      ...remoteNotes.value.filter((n) => !localIds.has(n.id)),
+    ];
+    notify(
+      `已移动到“${input.target}”${remote.length ? "，GitHub 目录已同步。" : "（仅本机）。"}`,
+    );
+  }
   function login() {
     if (configuration.value.authConfigured) location.href = "/api/auth/login";
     else setupOpen.value = true;
@@ -313,6 +347,7 @@ export function useWorkspace() {
     beginImport,
     contribute,
     saveProfile,
+    moveNotes,
     login,
     logout,
     save,

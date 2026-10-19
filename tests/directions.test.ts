@@ -9,7 +9,11 @@ import {
   type Identity,
 } from "../worker/app";
 import { createNote } from "../shared/note";
-import { directionName, mergeDirections } from "../shared/directions";
+import {
+  directionName,
+  directionFolder,
+  mergeDirections,
+} from "../shared/directions";
 
 const env: Env = {
   ASSETS: { fetch: async () => new Response("site") },
@@ -86,7 +90,10 @@ function repository(conflict = false, writable = true) {
         return reply({}, 422);
       }
       for (const entry of trees.get(commits.get(body.sha).tree)!) {
-        assert.equal(entry.path, "data/directions.json");
+        assert.ok(
+          entry.path === "data/directions.json" ||
+            entry.path.startsWith("papers/方向-"),
+        );
         files.set(entry.path, entry.content);
       }
       head = body.sha;
@@ -112,6 +119,10 @@ test("自定义空方向独立保存，兼容旧笔记方向，重复创建幂�
     "旧笔记方向",
   ]);
   assert.equal(repo.files.get("data/library.json"), originalIndex);
+  assert.match(
+    repo.files.get(`${directionFolder(created.name)}/README.md`)!,
+    /暂无阅读笔记/,
+  );
   await createDirection(env, user, created.name, repo.fetcher);
   assert.equal(repo.patches(), 1);
 });

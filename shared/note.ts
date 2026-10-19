@@ -234,7 +234,7 @@ export function structureText(text: string): {
     sections[key] = sections[key].trim();
   return { title, sections, matched };
 }
-export function toMarkdown(note: Note): string {
+export function toMarkdown(note: Note, rootPrefix = "../"): string {
   const metadata = {
     id: note.id,
     title: note.title,
@@ -256,7 +256,7 @@ export function toMarkdown(note: Note): string {
   const reviewText = note.review
     ? `\n\n## 审核与资料补充\n\n研究方向：${note.review.directions.join("、")}\n\n${note.review.supplements.map((s) => `- 自动补充 ${s.field}：${s.value}（来源：${s.sourceUrl}）`).join("\n")}\n\n${note.review.sources.map((s) => `- ${s.title}：${s.url}`).join("\n")}`
     : "";
-  return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${githubBody(noteBody(note))}${reviewText}\n`;
+  return `---\n${frontmatter}\n---\n\n# ${note.title}\n\n${note.subtitle ? `${note.subtitle}\n\n` : ""}${githubBody(noteBody(note), rootPrefix)}${reviewText}\n`;
 }
 export function validateNote(note: Note): string[] {
   const errors: string[] = [];

@@ -2,6 +2,7 @@ import type { NoteSummary } from "../shared/note";
 import {
   directionKey,
   directionName,
+  directionFolder,
   mergeDirections,
 } from "../shared/directions";
 import {
@@ -12,6 +13,7 @@ import {
   type Identity,
 } from "./app";
 import { readRepositoryJson } from "./profile";
+import { directionReadme } from "./layout";
 
 interface Catalog {
   version: number;
@@ -115,6 +117,7 @@ export async function createDirection(
               type: "blob",
               content: JSON.stringify({ version: 1, directions }, null, 2),
             },
+            directionReadme(directionFolder(name), name, []),
           ],
         }),
       },
