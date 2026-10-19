@@ -1,4 +1,32 @@
 {
   "version": 1,
-  "notes": []
+  "notes": [
+    {
+      "id": "note-17bdeb87-827e-4945-8a63-2357f686b810",
+      "title": "LeWorldModel 论文阅读笔记",
+      "subtitle": "",
+      "year": "2026",
+      "venue": "arXiv",
+      "paperUrl": "https://arxiv.org/abs/2603.19312v3",
+      "pdfUrl": "https://arxiv.org/pdf/2603.19312v3",
+      "codeUrl": "",
+      "author": "agdd",
+      "authorLogin": "nzy04",
+      "tags": [
+        "JEPA"
+      ],
+      "readingDepth": "阅读笔记",
+      "createdAt": "2026-10-19T09:49:22.693Z",
+      "updatedAt": "2026-10-19T09:49:22.693Z",
+      "revision": "6f928fcbb4b789b2d8c40b622c3f8cdb61e2f8dc3c7e23450e77cbb2f3b20477",
+      "excerpt": "LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels\n\n作者 Lucas Maes、Quentin Le Lidec、Damien Scieur、Yann LeCun、Randall Balestriero  \n版本 arXi",
+      "authorId": 152141156,
+      "aiFields": [
+        "paperUrl",
+        "year",
+        "venue",
+        "pdfUrl"
+      ]
+    }
+  ]
 }
