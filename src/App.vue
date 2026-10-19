@@ -12,8 +12,6 @@ import GuideView from "./components/GuideView.vue";
 import ContextMenu from "./components/ContextMenu.vue";
 import DirectionActionDialog from "./components/DirectionActionDialog.vue";
 import DeleteNoteDialog from "./components/DeleteNoteDialog.vue";
-import MembersView from "./components/MembersView.vue";
-import JoinView from "./components/JoinView.vue";
 const app = useWorkspace();
 </script>
 <template>
@@ -45,18 +43,7 @@ const app = useWorkspace();
     @setup="app.setupOpen.value = true"
     @direction-context="app.directionContext"
     @note-context="app.noteContext"
-  /><MembersView
-    v-else-if="app.view.value === 'members' && app.user.value?.isAdmin"
-  />
-  <JoinView
-    v-else-if="app.view.value === 'join'"
-    :token="app.invitationToken.value"
-    :user="app.user.value"
-    :title="app.configuration.value.title"
-    @joined="app.joined"
-    @back="app.navigate('library')"
-  />
-  <GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
+  /><GuideView v-else-if="app.view.value === 'guide'" /><ReviewJobsView
     v-else-if="app.view.value === 'reviews'"
     :jobs="app.reviews.jobs.value"
     :loading="app.reviews.loading.value"

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
 import {
   Miniflare,
   Response,
@@ -20,9 +19,6 @@ const bindings = {
   GITHUB_CLIENT_SECRET: "test-client-secret",
   SESSION_SECRET: "only-a-test-session-key-with-32-characters",
   DEEPSEEK_API_KEY: "test-key",
-  GITHUB_APP_PRIVATE_KEY: generateKeyPairSync("rsa", { modulusLength: 2048 })
-    .privateKey.export({ type: "pkcs1", format: "pem" })
-    .toString(),
 };
 const files = new Map([
   ["data/library.json", JSON.stringify({ version: 1, notes: [] })],
@@ -73,25 +69,8 @@ const outbound = async (request) => {
   }
   assert.equal(url.host, "api.github.com");
   const body = request.method === "GET" ? {} : await request.json();
-  if (pathname === "/repos/group/papers/installation")
-    return result({ id: 123 });
-  if (pathname === "/app/installations/123/access_tokens") {
-    assert.deepEqual(body, {
-      repositories: ["papers"],
-      permissions: { contents: "write" },
-    });
-    return result({
-      token: "installation-runtime-test-token",
-      expires_at: new Date(Date.now() + 3600000).toISOString(),
-      permissions: { contents: "write" },
-    });
-  }
-  assert.equal(
-    request.headers.get("Authorization"),
-    "Bearer installation-runtime-test-token",
-  );
   if (pathname === "/repos/group/papers")
-    return result({ permissions: { push: false } });
+    return result({ permissions: { push: true } });
   if (pathname.includes("/git/ref/heads/")) {
     snapshots.set(head, new Map(files));
     return result({ object: { sha: head } });
@@ -180,12 +159,6 @@ const alice = {
 const bob = { ...alice, id: 2, login: "bob", name: "Bob" };
 const aliceCookie = await cookie(alice),
   bobCookie = await cookie(bob);
-const ownerCookie = await cookie({
-  ...alice,
-  id: 999,
-  login: "group",
-  name: "Maintainer",
-});
 const image = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY1kAAAAASUVORK5CYII=",
   "base64",
@@ -225,13 +198,7 @@ const imagePath = `assets/uploads/${first.id}/figure.png`;
 first.assets = [{ path: imagePath, mime: "image/png", size: image.length }];
 first.body = `## 阅读理解\n\n${"该论文将视觉编码、潜在动力学预测和控制策略分开训练，以减少真实环境交互成本。我认为长期预测误差可能影响规划质量，需要通过预测长度消融、分布外场景和控制成功率共同验证，不能仅凭重构误差判断模型优劣。".repeat(3)}\n\n![方法图](${imagePath})`;
 const persist = path.resolve(`test-results/workflow-runtime-${Date.now()}`);
-const options = runtimeOptions(
-  "workflow-runtime",
-  persist,
-  bindings,
-  outbound,
-  true,
-);
+const options = runtimeOptions("workflow-runtime", persist, bindings, outbound);
 let mf = new Miniflare(options);
 async function restart() {
   await mf.dispose();
@@ -269,41 +236,6 @@ async function waitJob(id, status, auth = aliceCookie) {
 }
 const started = Date.now();
 try {
-  assert.equal(
-    (await call("/api/directions", { name: "未加入不能新建" })).status,
-    403,
-  );
-  assert.equal(
-    (await call("/api/members", undefined, aliceCookie)).status,
-    403,
-  );
-  const invitation = await call("/api/members/invitation", {}, ownerCookie);
-  assert.equal(invitation.status, 200, JSON.stringify(invitation.body));
-  const inviteToken = invitation.body.url.split("/#join/")[1];
-  assert.equal(
-    (await call("/api/invitations/preview", { token: inviteToken }, "")).body
-      .valid,
-    true,
-  );
-  for (const auth of [aliceCookie, bobCookie]) {
-    const joined = await call(
-      "/api/invitations/join",
-      { token: inviteToken },
-      auth,
-    );
-    assert.equal(joined.status, 200);
-    assert.equal(joined.body.user.canWrite, true);
-    assert.equal(joined.body.user.isAdmin, false);
-    assert.ok(
-      !JSON.stringify(joined.body).includes("installation-runtime-test-token"),
-    );
-  }
-  await restart();
-  assert.equal((await call("/api/session")).body.canWrite, true);
-  assert.equal(
-    (await call("/api/members", undefined, ownerCookie)).body.members.length,
-    2,
-  );
   assert.equal((await call("/api/notes/move", {}, "")).status, 401);
   assert.equal(
     (
@@ -384,7 +316,6 @@ try {
     body: JSON.stringify({ nickname: "新昵称" }),
   });
   assert.equal(renamed.status, 200);
-  assert.equal((await renamed.json()).user.isAdmin, false);
   assert.ok(files.get(`papers/方向-方向乙/${first.id}.md`).includes("新昵称"));
   const second = {
     ...first,
@@ -549,73 +480,6 @@ try {
     if (samples % 3 === 0) await restart();
     if (Date.now() < deadline) await new Promise((r) => setTimeout(r, 10000));
   } while (Date.now() < deadline);
-  const pendingRemoved = await call(
-    "/api/publish",
-    {
-      note: { ...second, id: `note-${crypto.randomUUID()}` },
-      assets: [],
-      baseRevision: "",
-    },
-    bobCookie,
-  );
-  assert.equal(pendingRemoved.status, 202);
-  assert.equal(
-    (
-      await call(
-        "/api/members/2",
-        { active: false },
-        ownerCookie,
-        "https://site.test",
-        "PATCH",
-      )
-    ).status,
-    200,
-  );
-  assert.equal(
-    (await call("/api/session", undefined, bobCookie)).body.canWrite,
-    false,
-  );
-  const failedRemoved = await waitJob(
-    pendingRemoved.body.job.id,
-    "failed",
-    bobCookie,
-  );
-  assert.match(failedRemoved.message, /移除/);
-  assert.equal(
-    (await call("/api/invitations/join", { token: inviteToken }, bobCookie))
-      .status,
-    403,
-  );
-  assert.equal(
-    (
-      await call(
-        "/api/members/2",
-        { active: true },
-        ownerCookie,
-        "https://site.test",
-        "PATCH",
-      )
-    ).status,
-    200,
-  );
-  assert.equal(
-    (await call("/api/session", undefined, bobCookie)).body.canWrite,
-    true,
-  );
-  assert.ok(!JSON.stringify([...files]).includes(inviteToken));
-  const adminProfile = await call(
-    "/api/profile",
-    { nickname: "维护者" },
-    ownerCookie,
-    "https://site.test",
-    "PUT",
-  );
-  assert.equal(adminProfile.status, 200);
-  assert.equal(adminProfile.body.user.isAdmin, true);
-  assert.equal(
-    (await call("/api/members", undefined, ownerCookie)).status,
-    200,
-  );
   assert.equal(modelCalls, 3);
   assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 1);
   const snapshot = path.join(persist, "repository-snapshot");
@@ -637,9 +501,6 @@ try {
     authorOnlyNoteDeletion: true,
     nickname: true,
     multipleContributors: true,
-    invitationJoinWithoutRepositoryAccess: true,
-    scopedInstallationWrites: true,
-    removedMemberQueuedWriteBlocked: true,
     rejectionNoWrite: true,
     authorOnlySubmissionDeletion: true,
     assetsUnchanged: true,

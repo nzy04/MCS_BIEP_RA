@@ -64,7 +64,6 @@ export function useWorkspace() {
   const selectedNote = ref<Note | null>(null);
   const editingNote = ref<Note | null>(null);
   const view = shallowRef("library");
-  const invitationToken = shallowRef("");
   const setupOpen = shallowRef(false);
   const profileOpen = shallowRef(false);
   const loading = shallowRef(true);
@@ -303,7 +302,7 @@ export function useWorkspace() {
         input.replacement === null ? null : directionName(input.replacement),
     };
     if (!directions.canCreate.value)
-      throw new Error("请先登录并加入论文库，再整理研究方向。");
+      throw new Error("请先登录有仓库写权限的 GitHub 账号。");
     let local = await localNotes().catch(() => []);
     let nextDirections: string[];
     let nextRemote = remoteNotes.value;
@@ -373,31 +372,15 @@ export function useWorkspace() {
         : "研究方向已删除，所有笔记均已保留。",
     );
   }
-  async function login() {
-    if (!configuration.value.authConfigured) {
-      setupOpen.value = true;
-      return;
-    }
-    if (view.value === "join" && invitationToken.value) {
-      try {
-        location.assign((await api.invitationLogin(invitationToken.value)).url);
-      } catch (e) {
-        notify((e as Error).message, "error");
-      }
-    } else location.href = "/api/auth/login";
-  }
-  function joined(userSession: Session) {
-    user.value = userSession;
-    invitationToken.value = "";
-    navigate("library");
-    notify("已加入论文库，可以上传笔记了。");
+  function login() {
+    if (configuration.value.authConfigured) location.href = "/api/auth/login";
+    else setupOpen.value = true;
   }
   async function logout() {
     try {
       await api.api("/api/logout", { method: "POST" });
       user.value = null;
       profileOpen.value = false;
-      if (view.value === "members") navigate("library");
       notify("已退出登录。");
     } catch (e) {
       notify((e as Error).message, "error");
@@ -496,13 +479,7 @@ export function useWorkspace() {
     } catch {
       hash = "";
     }
-    if (hash.startsWith("join/")) {
-      invitationToken.value = hash.slice(5);
-      view.value = "join";
-    } else if (hash === "members") {
-      view.value = user.value?.isAdmin ? "members" : "library";
-      if (!user.value?.isAdmin) notify("只有维护者可以管理组员。", "error");
-    } else if (hash.startsWith("paper/")) {
+    if (hash.startsWith("paper/")) {
       if (selectedNote.value?.id === hash.slice(6)) view.value = "reader";
       else void openNote(hash.slice(6));
     } else
@@ -548,8 +525,6 @@ export function useWorkspace() {
     selectedNote,
     editingNote,
     view,
-    invitationToken,
-    joined,
     setupOpen,
     profileOpen,
     selectedPaperNotes,

@@ -4,13 +4,7 @@ const require = createRequire(import.meta.url);
 export const { Miniflare, Response } = require(
   require.resolve("miniflare", { paths: [require.resolve("wrangler")] }),
 );
-export function runtimeOptions(
-  name,
-  persist,
-  bindings,
-  outboundService,
-  members = false,
-) {
+export function runtimeOptions(name, persist, bindings, outboundService) {
   return {
     resourcePersistencePath: persist,
     telemetry: { enabled: false },
@@ -43,23 +37,9 @@ export function runtimeOptions(
               worker: name,
               exportName: "ReviewQueue",
             },
-            ...(members
-              ? {
-                  MEMBERS: {
-                    type: "durable-object",
-                    worker: name,
-                    exportName: "MemberRegistry",
-                  },
-                }
-              : {}),
           },
           exports: {
             ReviewQueue: { type: "durable-object", storage: "sqlite" },
-            ...(members
-              ? {
-                  MemberRegistry: { type: "durable-object", storage: "sqlite" },
-                }
-              : {}),
           },
         },
         dev: { outboundService: { type: "fetcher", handler: outboundService } },

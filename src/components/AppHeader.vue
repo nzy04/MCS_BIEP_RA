@@ -37,12 +37,6 @@ defineEmits<{
             pendingReviews
           }}</span></a
         ><a
-          v-if="user?.isAdmin && config.membershipConfigured"
-          href="#members"
-          :class="{ active: view === 'members' }"
-          @click.prevent="$emit('navigate', 'members')"
-          >组员管理</a
-        ><a
           v-if="config.repository"
           :href="`https://github.com/${config.repository}`"
           target="_blank"
@@ -108,17 +102,5 @@ defineEmits<{
   color: var(--green);
   border-radius: 2px;
   font-size: 13px;
-}
-@media (max-width: 720px) {
-  .primary-nav {
-    height: auto;
-    min-height: 32px;
-    flex-wrap: wrap;
-    row-gap: 8px;
-  }
-  .primary-nav a {
-    height: auto;
-    min-height: 28px;
-  }
 }
 </style>
