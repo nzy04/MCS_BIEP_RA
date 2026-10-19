@@ -7,11 +7,21 @@
   "preview_urls": false,
   "keep_vars": true,
   "durable_objects": {
-    "bindings": [{ "name": "REVIEW_QUEUE", "class_name": "ReviewQueue" }],
+    "bindings": [
+      { "name": "REVIEW_QUEUE", "class_name": "ReviewQueue" },
+      { "name": "MEMBERS", "class_name": "MemberRegistry" },
+    ],
   },
-  "migrations": [{ "tag": "review-v1", "new_sqlite_classes": ["ReviewQueue"] }],
+  "migrations": [
+    { "tag": "review-v1", "new_sqlite_classes": ["ReviewQueue"] },
+    { "tag": "members-v1", "new_sqlite_classes": ["MemberRegistry"] },
+  ],
   "secrets": {
-    "required": ["GITHUB_CLIENT_SECRET", "SESSION_SECRET"],
+    "required": [
+      "GITHUB_CLIENT_SECRET",
+      "SESSION_SECRET",
+      "GITHUB_APP_PRIVATE_KEY",
+    ],
   },
   "assets": {
     "directory": "./dist",

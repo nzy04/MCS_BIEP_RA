@@ -26,6 +26,13 @@ import {
   type DirectionCatalog,
 } from "../shared/directions";
 import { checkDeepseek } from "./review";
+import {
+  installationConfigured,
+  installationToken,
+  invalidateInstallationToken,
+} from "./installation";
+import { isOwner, memberService, siteRole } from "./members";
+import type { SiteMember, InvitationPreview } from "../shared/members";
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   SITE_TITLE: string;
@@ -40,6 +47,8 @@ export interface Env {
   REVIEW_DAILY_LIMIT?: string;
   REVIEW_USER_DAILY_LIMIT?: string;
   REVIEW_QUEUE?: ReviewQueueNamespace;
+  MEMBERS?: ReviewQueueNamespace;
+  GITHUB_APP_PRIVATE_KEY?: string;
 }
 export interface Identity extends Session {
   token: string;
@@ -144,19 +153,34 @@ async function identity(request: Request, env: Env) {
     cookie(request, "mcs_session"),
     env.SESSION_SECRET,
   );
-  return user && user.expires > Date.now() ? user : null;
+  if (!user || user.expires <= Date.now()) return null;
+  if (env.MEMBERS) {
+    const role = await siteRole(env, user);
+    user.canWrite =
+      role.active && (role.isAdmin || installationConfigured(env));
+    user.isAdmin = role.isAdmin;
+  }
+  return user;
 }
 function requireOrigin(request: Request) {
   if (request.headers.get("Origin") !== new URL(request.url).origin)
     throw new HttpError(403, "请求来源不匹配，请从本网站重新提交。");
 }
 export async function github<T = any>(
-  _env: Env,
+  env: Env,
   path: string,
   token: string,
   init: RequestInit = {},
   fetcher: typeof fetch = fetch,
 ): Promise<T> {
+  // Member OAuth tokens identify people; only the scoped installation writes the repository.
+  // All mutation entry points separately check current membership and note ownership.
+  const root = `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}`;
+  const usesInstallation =
+    env.MEMBERS &&
+    installationConfigured(env) &&
+    (path === root || path.startsWith(`${root}/`) || path === "/graphql");
+  if (usesInstallation) token = await installationToken(env, fetcher);
   let response: Response;
   try {
     response = await fetcher(`https://api.github.com${path}`, {
@@ -178,6 +202,19 @@ export async function github<T = any>(
     );
   }
   if (!response.ok) {
+    if (
+      usesInstallation &&
+      (response.status === 401 ||
+        (response.status === 403 &&
+          response.headers.get("x-ratelimit-remaining") !== "0"))
+    ) {
+      invalidateInstallationToken(env, token);
+      // Do not replay writes: the caller must first verify whether they were saved.
+      throw new HttpError(
+        503,
+        "后台仓库授权暂时不可用。请刷新核对保存结果后重试；若仍失败，请维护者检查 GitHub App 的安装权限。",
+      );
+    }
     const error = (await response.json().catch(() => ({ message: "" }))) as {
       message?: string;
     };
@@ -675,6 +712,20 @@ export async function assertWriteAccess(
 ) {
   if (user.expires <= Date.now())
     throw new HttpError(401, "GitHub 登录已失效，请重新登录后重试。");
+  if (env.MEMBERS) {
+    const role = await siteRole(env, user);
+    if (!role.active)
+      throw new HttpError(
+        403,
+        "你还不是论文库成员，或成员资格已被移除。请联系维护者获取邀请。",
+      );
+    if (installationConfigured(env)) {
+      await installationToken(env, fetcher);
+      return;
+    }
+    if (!role.isAdmin)
+      throw new HttpError(503, "后台仓库授权尚未完成配置，请联系维护者。");
+  }
   const permissions = await github<any>(
     env,
     `/repos/${repository(env)}`,
@@ -713,9 +764,101 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         configured: configured(env),
         authConfigured: authConfigured(env),
         reviewConfigured: !!env.REVIEW_QUEUE && !!env.DEEPSEEK_API_KEY,
+        membershipConfigured: !!env.MEMBERS,
         repository: configured(env) ? repository(env) : "",
         branch: env.GITHUB_BRANCH || "main",
       });
+    const memberMatch = path.match(/^\/api\/members\/(\d+)$/);
+    if (
+      path === "/api/members" ||
+      path === "/api/members/invitation" ||
+      memberMatch
+    ) {
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub。");
+      if (!isOwner(env, user))
+        throw new HttpError(403, "只有维护者可以管理成员。");
+      const publicInvite = (invite: any) =>
+        invite
+          ? {
+              url: `${url.origin}/#join/${invite.token}`,
+              expiresAt: invite.expiresAt,
+              uses: invite.uses,
+              maxUses: invite.maxUses,
+            }
+          : null;
+      if (path === "/api/members" && request.method === "GET") {
+        const result = await memberService<{
+          members: SiteMember[];
+          invitation: unknown;
+        }>(env, "list", { user });
+        let ready = false;
+        try {
+          await installationToken(env);
+          ready = true;
+        } catch {}
+        return json({
+          ...result,
+          invitation: publicInvite(result.invitation),
+          configured: ready,
+        });
+      }
+      requireOrigin(request);
+      if (path === "/api/members/invitation" && request.method === "POST") {
+        await installationToken(env);
+        return json(publicInvite(await memberService(env, "create", { user })));
+      }
+      if (path === "/api/members/invitation" && request.method === "DELETE")
+        return json(await memberService(env, "revoke", { user }));
+      if (memberMatch && request.method === "PATCH") {
+        const raw = await request.text();
+        if (raw.length > 1024) throw new HttpError(413, "请求过长。");
+        let value;
+        try {
+          value = JSON.parse(raw);
+        } catch {
+          throw new HttpError(400, "成员修改格式不正确。");
+        }
+        return json(
+          await memberService(env, "update", {
+            user,
+            id: Number(memberMatch[1]),
+            active: value?.active,
+          }),
+        );
+      }
+      throw new HttpError(405, "请求方式不支持。");
+    }
+    if (
+      ["/api/invitations/preview", "/api/invitations/join"].includes(path) &&
+      request.method === "POST"
+    ) {
+      requireOrigin(request);
+      const raw = await request.text();
+      if (raw.length > 1024) throw new HttpError(413, "邀请请求过长。");
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "邀请链接格式不正确。");
+      }
+      if (path.endsWith("/preview"))
+        return json(
+          await memberService(env, "preview", { token: value?.token }),
+        );
+      const user = await identity(request, env);
+      if (!user) throw new HttpError(401, "请先登录 GitHub，再加入论文库。");
+      await installationToken(env);
+      await memberService(env, "join", { user, token: value?.token });
+      const role = await siteRole(env, user);
+      return json({
+        user: await profileSession(env, {
+          ...user,
+          canWrite: role.active,
+          isAdmin: role.isAdmin,
+        }),
+      });
+    }
     if (path === "/api/session") {
       const user = await identity(request, env);
       return json(user ? await profileSession(env, user) : null);
@@ -746,6 +889,29 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (path === "/api/auth/login") {
       if (!authConfigured(env))
         throw new HttpError(503, "维护者尚未配置 GitHub 登录。");
+      if (!["GET", "POST"].includes(request.method))
+        throw new HttpError(405, "请求方式不支持。");
+      let returnTo = "/";
+      if (request.method === "POST") {
+        requireOrigin(request);
+        const raw = await request.text();
+        if (raw.length > 1024) throw new HttpError(413, "登录请求过长。");
+        let value;
+        try {
+          value = JSON.parse(raw);
+        } catch {
+          throw new HttpError(400, "登录请求格式不正确。");
+        }
+        const match =
+          typeof value?.returnTo === "string" &&
+          value.returnTo.match(/^\/#join\/([A-Za-z0-9_-]{43})$/);
+        if (!match) throw new HttpError(400, "邀请返回地址不正确。");
+        const preview = await memberService<InvitationPreview>(env, "preview", {
+          token: match[1],
+        });
+        if (!preview.valid) throw new HttpError(410, preview.message);
+        returnTo = value.returnTo;
+      }
       const state = encode(crypto.getRandomValues(new Uint8Array(24)));
       const verifier = encode(crypto.getRandomValues(new Uint8Array(32)));
       const challenge = encode(
@@ -764,22 +930,28 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         code_challenge: challenge,
         code_challenge_method: "S256",
       }).toString();
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: target.toString(),
-          "Set-Cookie": setCookie(
-            request,
-            "mcs_oauth",
-            await seal(
-              { state, verifier, expires: Date.now() + 600000 },
-              env.SESSION_SECRET,
+      return new Response(
+        request.method === "POST"
+          ? JSON.stringify({ url: target.toString() })
+          : null,
+        {
+          status: request.method === "POST" ? 200 : 302,
+          headers: {
+            Location: target.toString(),
+            "Content-Type": "application/json;charset=utf-8",
+            "Set-Cookie": setCookie(
+              request,
+              "mcs_oauth",
+              await seal(
+                { state, verifier, returnTo, expires: Date.now() + 600000 },
+                env.SESSION_SECRET,
+              ),
+              600,
             ),
-            600,
-          ),
-          "Cache-Control": "no-store",
+            "Cache-Control": "no-store",
+          },
         },
-      });
+      );
     }
     if (path === "/api/auth/callback") {
       if (!authConfigured(env))
@@ -787,6 +959,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const flow = await unseal<{
         state: string;
         verifier: string;
+        returnTo?: string;
         expires: number;
       }>(cookie(request, "mcs_oauth"), env.SESSION_SECRET);
       if (url.searchParams.has("error"))
@@ -828,16 +1001,18 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const profile = await github<any>(env, "/user", token.access_token);
       let canWrite = false;
       try {
-        const repo = await github<any>(
-          env,
-          `/repos/${repository(env)}`,
-          token.access_token,
-        );
-        canWrite = !!(
-          repo.permissions?.push ||
-          repo.permissions?.admin ||
-          repo.permissions?.maintain
-        );
+        if (!env.MEMBERS) {
+          const repo = await github<any>(
+            env,
+            `/repos/${repository(env)}`,
+            token.access_token,
+          );
+          canWrite = !!(
+            repo.permissions?.push ||
+            repo.permissions?.admin ||
+            repo.permissions?.maintain
+          );
+        }
       } catch {}
       const age = Math.min(token.expires_in || 28800, 28800);
       const user: Identity = {
@@ -850,9 +1025,20 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         token: token.access_token,
         expires: Date.now() + age * 1000,
       };
+      if (env.MEMBERS) {
+        const role = await siteRole(env, user);
+        user.canWrite =
+          role.active && (role.isAdmin || installationConfigured(env));
+        user.isAdmin = role.isAdmin;
+      }
       const response = new Response(null, {
         status: 302,
-        headers: { Location: "/", "Cache-Control": "no-store" },
+        headers: {
+          Location: flow.returnTo?.match(/^\/#join\/[A-Za-z0-9_-]{43}$/)
+            ? flow.returnTo
+            : "/",
+          "Cache-Control": "no-store",
+        },
       });
       response.headers.append(
         "Set-Cookie",

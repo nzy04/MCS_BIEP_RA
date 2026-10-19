@@ -6,3 +6,5 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 SESSION_SECRET=
 DEEPSEEK_API_KEY=
+# GitHub App private key, stored as a secret in production; never commit a real key.
+GITHUB_APP_PRIVATE_KEY=

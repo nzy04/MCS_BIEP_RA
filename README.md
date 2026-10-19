@@ -4,7 +4,7 @@
 
 ## 使用
 
-- 公开阅读无需登录；上传和修改需要仓库写权限。
+- 公开阅读无需登录；组员通过维护者的邀请链接，使用 GitHub 登录后自动加入，无需仓库协作者权限。
 - 同一论文可保留多人的独立笔记，可按作者切换阅读。
 - 主页与上传页均可新建研究方向，上传时可多选已有方向；这些操作无需调用模型。
 - 右键「研究方向」新建；右键具体方向重命名或删除。删除只取消分类，所有笔记仍在「全部文献」中。重命名同步 GitHub 目录。
@@ -15,6 +15,7 @@
 - 退回时红色列出修改原因，修改页定位问题字段或原句。
 - 缺少 PDF 下载链接时，确认提交后在后台自动检索补充链接；优先使用公开接口，搜索仅作兜底。只补充地址，不下载或归档 PDF 文件；无法可靠匹配时反馈原因。
 - 详细操作见网站「使用指南」。
+- 维护者在网站「组员管理」生成或复制邀请链接、停用链接、移除或恢复成员。链接默认7天有效，最多加入50人；到期不影响已加入成员。
 - 邀请组员、备份、故障处理和容量限制见 [维护说明](MAINTENANCE.md)。
 
 ## 本地运行
@@ -30,7 +31,9 @@ pnpm dev
 
 ## 部署
 
-在服务端配置 `GITHUB_OWNER`、`GITHUB_REPO`、`GITHUB_CLIENT_ID`，并将 `GITHUB_CLIENT_SECRET`、`SESSION_SECRET`、`DEEPSEEK_API_KEY` 保存为 Secret。GitHub App 需要目标仓库的 Contents 读写权限，登录回调为网站域名下的 `/api/auth/callback`。`SESSION_SECRET` 至少使用 32 个随机字符。
+在服务端配置 `GITHUB_OWNER`、`GITHUB_REPO`、`GITHUB_CLIENT_ID`，并将 `GITHUB_CLIENT_SECRET`、`SESSION_SECRET`、`DEEPSEEK_API_KEY`、`GITHUB_APP_PRIVATE_KEY` 保存为 Secret。GitHub App 仅安装到目标仓库，授予 Contents 读写和 Metadata 读取权限；登录回调为网站域名下的 `/api/auth/callback`。`SESSION_SECRET` 至少使用32个随机字符。应用私钥使用 GitHub 下载的完整 PEM 内容，仅保存在服务端。
+
+后台使用仅针对目标仓库的短期安装令牌保存内容，用户 GitHub 账号只用于身份与署名。成员名单和邀请凭据保存在私有的 `MemberRegistry` Durable Object，不进入公开 GitHub 仓库。维护者是 `GITHUB_OWNER` 对应的 GitHub 账号；成员权限每次写入重新核验，移除成员不会删除其笔记。
 
 ```sh
 pnpm test

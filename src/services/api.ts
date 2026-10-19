@@ -1,6 +1,40 @@
 import type { SiteConfig, Session, Note, NoteSummary } from "../../shared/note";
 import type { ReviewJobSummary } from "../../shared/review";
 import type {
+  MembersData,
+  SiteInvitation,
+  InvitationPreview,
+} from "../../shared/members";
+export const members = () => api<MembersData>("/api/members");
+export const createInvitation = () =>
+  api<SiteInvitation>("/api/members/invitation", { method: "POST" });
+export const revokeInvitation = () =>
+  api("/api/members/invitation", { method: "DELETE" });
+export const changeMember = (id: number, active: boolean) =>
+  api(`/api/members/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ active }),
+  });
+export const previewInvitation = (token: string) =>
+  api<InvitationPreview>("/api/invitations/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+export const joinInvitation = (token: string) =>
+  api<{ user: Session }>("/api/invitations/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+export const invitationLogin = (token: string) =>
+  api<{ url: string }>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ returnTo: `/#join/${token}` }),
+  });
+import type {
   MoveNotesRequest,
   DirectionChange,
 } from "../../shared/directions";

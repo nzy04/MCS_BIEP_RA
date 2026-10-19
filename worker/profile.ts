@@ -74,7 +74,11 @@ export async function profileSession(
     ref,
     null,
     fetcher,
-  );
+  ).catch((error) => {
+    if (env.MEMBERS && error instanceof HttpError && error.status === 503)
+      return null;
+    throw error;
+  });
   const githubName = user.githubName || user.name || user.login;
   return {
     id: user.id,
@@ -84,6 +88,7 @@ export async function profileSession(
     nickname: profile?.nickname || "",
     avatar: user.avatar,
     canWrite: user.canWrite,
+    ...(env.MEMBERS ? { isAdmin: !!user.isAdmin } : {}),
   };
 }
 
@@ -300,6 +305,7 @@ export async function updateProfile(
           nickname,
           avatar: user.avatar,
           canWrite: user.canWrite,
+          ...(env.MEMBERS ? { isAdmin: !!user.isAdmin } : {}),
         },
         notes,
       };

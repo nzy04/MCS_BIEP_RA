@@ -135,6 +135,7 @@ export interface SiteConfig {
   configured: boolean;
   authConfigured: boolean;
   reviewConfigured?: boolean;
+  membershipConfigured?: boolean;
   repository: string;
   branch: string;
 }
@@ -146,6 +147,7 @@ export interface Session {
   nickname?: string;
   avatar: string;
   canWrite: boolean;
+  isAdmin?: boolean;
 }
 export function emptySections(): Record<SectionKey, string> {
   return Object.fromEntries(

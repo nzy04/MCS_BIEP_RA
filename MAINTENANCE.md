@@ -4,14 +4,16 @@
 
 ## 邀请组员
 
-1. 仓库维护者进入 GitHub 仓库 → Settings → Collaborators → Add people。
-2. 输入组员的 GitHub 用户名，发送邀请；组员需要接受邀请。
-3. 组员打开网站，点击 GitHub 登录并授权现有登录应用，即可新建方向和提交笔记。无需注册 Cloudflare，也不需要填写 API Key。
-4. 如果接受邀请后仍显示没有写权限，退出网站并重新登录，以更新权限。
+1. 维护者使用 `GITHUB_OWNER` 对应账号登录网站，打开「组员管理」。
+2. 点击「生成邀请链接」或「复制邀请链接」，把链接发给组员。默认7天有效，最多加入50人；更换链接会使旧链接失效。
+3. 组员打开链接，点击「使用 GitHub 加入」，授权登录后自动成为网站成员。无需加入仓库协作者，无需 Cloudflare 账号或个人 API Key。
+4. 可停用邀请链接；在成员列表移除成员会立即阻止其后续写入和排队发布，保留已发布笔记。被移除者不能利用旧邀请重新加入，需要维护者点击「恢复资格」。
 
-公开阅读不需要邀请。个人仓库的 collaborator 拥有仓库写权限，能够直接通过 GitHub 改代码和他人文件；网站中的“仅能编辑自己的正文”不是 GitHub 层面的隔离。只邀请可信组员。未来如需严格区分代码维护者和笔记贡献者，需要把内容仓库与代码仓库分开并调整授权流程。
+链接过期不影响已加入成员。持有有效链接并登录的账号可以加入，链接应仅分享给课题组。网站成员可以整理方向，只能编辑或删除自己的正文；后台通过 GitHub App 的单仓库安装令牌保存内容，不给组员 GitHub 仓库写权限。先前手动添加的 GitHub 协作者权限不会自动移除，需要仓库所有者按实际需要单独管理。
 
-官方步骤：[邀请协作者](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/repository-access-and-collaboration/inviting-collaborators-to-a-personal-repository)。
+后台配置需要 GitHub App 的完整 PEM 私钥，保存为 Cloudflare `GITHUB_APP_PRIVATE_KEY` Secret。沿用现有应用的 Client ID 和 Client Secret，仓库安装范围保持为目标仓库，权限为 Contents 读写、Metadata 读取。每次获取安装令牌仍明确限制到目标仓库，令牌自动续期；私钥、用户令牌、邀请凭据不提交到仓库。
+
+成员服务使用 `MEMBERS` 绑定和 `members-v1` SQLite Durable Object 迁移，部署时保留既有审核对象和迁移记录。缺少私钥时不会生成新邀请，维护者仍可使用自己的已有仓库权限维护内容。
 
 ## 当前范围和限制
 
@@ -48,7 +50,7 @@ Cloudflare Workers 免费计划当前为每天 100,000 请求、每次 10 ms CPU
 
 建议定期将完整仓库镜像保存到另一台设备或学校存储。首次备份可运行 `git clone --mirror <仓库HTTPS地址> <备份目录>`，之后在该备份目录运行 `git remote update --prune`；保留独立历史快照，避免误操作同时同步到唯一备份。
 
-Git 镜像包含代码、笔记、阅读版、附件和提交历史，不包含 Cloudflare Secret、GitHub App 私密配置以及未发布的临时审核草稿。这些配置由维护者独立保管，不提交到仓库、不发给组员。
+Git 镜像包含代码、笔记、阅读版、附件和提交历史，不包含 Cloudflare Secret、GitHub App 私密配置、成员名单、邀请凭据以及未发布的临时审核草稿。这些配置和私有存储由维护者独立保管，不提交到仓库。不要删除 `MemberRegistry` 对象或重置其持久存储；如果成员存储丢失，需要重新生成邀请让成员加入，同一 GitHub ID 的历史笔记归属仍保留。
 
 数据出错时，从 GitHub 历史找回对应 `data/notes/`、`data/library.json`、`papers/` 和附件，放在同一次恢复提交中；先运行 `node scripts/check-repository.mjs`，再提交。不要仅恢复 Markdown 而漏掉网站 JSON。
 
