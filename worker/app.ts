@@ -710,7 +710,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         title: env.SITE_TITLE || "MCS_BIEP",
         configured: configured(env),
         authConfigured: authConfigured(env),
-        reviewConfigured: !!env.REVIEW_QUEUE && !!env.DEEPSEEK_API_KEY,
+        reviewConfigured: !!env.REVIEW_QUEUE,
         repository: configured(env) ? repository(env) : "",
         branch: env.GITHUB_BRANCH || "main",
       });
@@ -1029,11 +1029,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         throw new HttpError(400, "提交内容不是有效 JSON。");
       }
       const validated = validateIncoming(value);
-      if (!env.DEEPSEEK_API_KEY)
-        throw new HttpError(
-          503,
-          "维护者尚未配置共享 DeepSeek 审核密钥。草稿已保留，请稍后提交。",
-        );
       await assertWriteAccess(env, user);
       return await reviewService(env).fetch(
         new Request("https://review.internal/api/reviews", {

@@ -242,8 +242,7 @@ export class ReviewQueue {
         });
       }
       if (action === "submit") {
-        if (!user.canWrite || !this.env.DEEPSEEK_API_KEY)
-          throw new HttpError(403, "审核尚未启用或没有写入权限。");
+        if (!user.canWrite) throw new HttpError(403, "没有仓库写入权限。");
         const validated = validateIncoming(value);
         return await this.state.blockConcurrencyWhile(async () => {
           try {
@@ -330,7 +329,7 @@ export class ReviewQueue {
                 409,
                 "此任务无需重试；未通过的笔记请修改后重新提交。",
               );
-            if (!user.canWrite || !this.env.DEEPSEEK_API_KEY)
+            if (!user.canWrite)
               throw new HttpError(403, "当前账号不能提交审核。");
             const payload =
               current.payloadExpires > Date.now() &&

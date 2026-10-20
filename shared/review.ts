@@ -47,6 +47,7 @@ export interface ReviewReceipt {
   sources: ReviewSource[];
   supplements: ReviewSupplement[];
   pdfNotice?: string;
+  enrichmentNotice?: string;
   suggestions?: ReviewIssue[];
   formatted?: boolean;
 }

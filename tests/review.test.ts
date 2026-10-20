@@ -60,7 +60,7 @@ function model(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("模型的内容深度意见只作建议，保留真实引文但不阻止发布", async () => {
+test("模型不再参与质量审核，旧格式的拒绝和修改要求全部忽略", async () => {
   const n = note();
   const quote = n.sections.insights.slice(0, 16);
   const result = await reviewSubmission(n, env, [], async () =>
@@ -80,8 +80,8 @@ test("模型的内容深度意见只作建议，保留真实引文但不阻止�
   );
   assert.equal(result.approved, true);
   assert.deepEqual(result.issues, []);
-  assert.equal(result.receipt?.suggestions?.[0].quote, quote);
-  assert.equal(result.receipt?.suggestions?.[1].quote, undefined);
+  assert.equal(result.receipt?.suggestions, undefined);
+  assert.deepEqual(result.note.sections, n.sections);
 });
 
 test("手动选择的自定义文件夹完全保留，模型不能追加或改写", async () => {
@@ -132,7 +132,7 @@ const reply = (body: unknown, status = 200) =>
     status,
     headers: { "Content-Type": "application/json" },
   });
-const chat = (value = model(), finish = "stop") =>
+const chat = (value: unknown = model(), finish = "stop") =>
   reply({
     choices: [
       { finish_reason: finish, message: { content: JSON.stringify(value) } },
@@ -345,9 +345,9 @@ test("完整图文笔记保留自定义章节和图表，完善建议不退回",
   );
   assert.equal(rejected.approved, true);
   assert.equal(rejected.note.body, n.body);
-  assert.equal(rejected.receipt?.suggestions?.[0]?.field, "insights");
+  assert.equal(rejected.receipt?.suggestions, undefined);
 });
-test("免费定位失败才调用一次搜索，找不到唯一来源时不再花费聊天额度", async () => {
+test("找不到唯一来源时留空并提示，不阻止基本校验通过的笔记发布", async () => {
   const n = note();
   n.paperUrl = "";
   const calls: string[] = [];
@@ -365,13 +365,16 @@ test("免费定位失败才调用一次搜索，找不到唯一来源时不再�
           },
         ],
       });
-    throw new Error("unexpected chat request");
+    return chat();
   });
-  assert.equal(result.approved, false);
+  assert.equal(result.approved, true);
   assert.equal(calls.filter((u) => u.includes("api.crossref.org")).length, 2);
   assert.equal(calls.filter((u) => u.includes("export.arxiv.org")).length, 1);
   assert.equal(calls.filter((u) => u.includes("tools/search")).length, 1);
-  assert.equal(result.issues[0]?.field, "paperUrl");
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.note.paperUrl, "");
+  assert.match(result.receipt?.enrichmentNotice || "", /未找到可确认/);
+  assert.equal(calls.filter((u) => u.includes("chat/completions")).length, 1);
   assert.equal(academicUrl("https://arxiv.org.evil.test/abs/123"), false);
   assert.equal(academicUrl("https://arxiv.org@evil.test/abs/123"), false);
 });
@@ -408,7 +411,7 @@ test("搜索找到官方来源才补充，并记录来源后进行一次审核",
     "https://arxiv.org/abs/1803.10122",
   );
 });
-test("忽略无法核对的自动整理，不编造观点；不接受未完整返回的结果", async () => {
+test("自动整理不可核对、响应截断或旧质量字段异常均不阻止发布", async () => {
   const original = note();
   original.sections.insights = "";
   const result = await reviewSubmission(original, env, [], async () =>
@@ -420,18 +423,105 @@ test("忽略无法核对的自动整理，不编造观点；不接受未完整�
   );
   assert.equal(result.approved, true);
   assert.equal(result.note.sections.insights, "");
-  await assert.rejects(
-    () =>
-      reviewSubmission(note(), env, [], async () => chat(model(), "length")),
-    /未完整返回/,
+  const incomplete = await reviewSubmission(original, env, [], async () =>
+    chat(model(), "length"),
   );
-  await assert.rejects(
-    () =>
-      reviewSubmission(note(), env, [], async () =>
-        chat(model({ approved: "true" })),
-      ),
-    /格式校验/,
+  assert.equal(incomplete.approved, true);
+  assert.deepEqual(incomplete.note.sections, original.sections);
+  assert.equal(incomplete.receipt?.model, "basic-validation");
+  assert.match(incomplete.receipt?.enrichmentNotice || "", /不影响发布/);
+  const legacy = await reviewSubmission(original, env, [], async () =>
+    chat(model({ approved: "false", issues: "退回" })),
   );
+  assert.equal(legacy.approved, true);
+  assert.deepEqual(legacy.issues, []);
+});
+
+test("模型仅返回资料整理字段即可发布；畸形字段不能改正文或阻止发布", async () => {
+  const n = note();
+  n.body = "## 初读\n\n关注潜在空间中如何预测未来。";
+  for (const response of [
+    { directions: ["世界模型"], extractions: [], headings: [] },
+    {
+      directions: [null, {}, "<非法>"],
+      extractions: [null, {}],
+      headings: [null],
+    },
+  ]) {
+    const result = await reviewSubmission(n, env, [], async () =>
+      chat(response),
+    );
+    assert.equal(result.approved, true);
+    assert.equal(result.note.body, n.body);
+    assert.deepEqual(result.issues, []);
+  }
+});
+
+test("DeepSeek限流、余额不足、网络及响应异常只跳过整理，保留原文和已补齐链接", async () => {
+  const n = note();
+  n.tags = ["自选方向"];
+  n.body = "## 初读\n\n我想了解该模型的预测方式。";
+  const unavailable: (typeof fetch)[] = [
+    ...[401, 402, 429, 500].map((status) => async () => reply({}, status)),
+    async () => {
+      throw new Error("network failure with private-secret");
+    },
+    async () => new Response("bad JSON"),
+    async () =>
+      reply({
+        choices: [
+          { finish_reason: "stop", message: { content: "invalid JSON" } },
+        ],
+      }),
+    async () => chat(null as any),
+    async () => chat([] as any),
+  ];
+  for (const fetcher of unavailable) {
+    const result = await reviewSubmission(n, env, [], fetcher);
+    assert.equal(result.approved, true);
+    assert.equal(result.note.body, n.body);
+    assert.deepEqual(result.note.tags, n.tags);
+    assert.equal(result.note.pdfUrl, "https://arxiv.org/pdf/1803.10122");
+    assert.equal(result.receipt?.model, "basic-validation");
+    assert.match(result.receipt?.enrichmentNotice || "", /不影响发布/);
+    assert.ok(!JSON.stringify(result).includes("private-secret"));
+  }
+});
+
+test("检索全部失败仍可发布，没有密钥时不调用DeepSeek；基本内容错误仍会退回", async () => {
+  const n = note();
+  n.body = "## 初读\n\n希望后续研究更长时间的预测。";
+  n.paperUrl = "";
+  n.year = "";
+  for (const key of [env.DEEPSEEK_API_KEY, undefined]) {
+    let paid = 0;
+    const result = await reviewSubmission(
+      n,
+      { DEEPSEEK_API_KEY: key },
+      [],
+      async (url) => {
+        if (String(url).includes("deepseek")) paid++;
+        throw new Error("all services unavailable");
+      },
+    );
+    assert.equal(result.approved, true);
+    assert.equal(result.note.body, n.body);
+    assert.equal(result.note.paperUrl, "");
+    assert.equal(result.note.pdfUrl, "");
+    assert.equal(paid, key ? 2 : 0);
+    assert.deepEqual(result.receipt?.sources, []);
+  }
+  for (const invalid of [
+    { ...n, body: "待补充" },
+    { ...n, title: "" },
+    { ...n, body: "长".repeat(40_001) },
+  ]) {
+    const outcome = await reviewSubmission(invalid, {}, [], async () => {
+      throw new Error("must not call");
+    });
+    assert.equal(outcome.approved, false);
+    assert.ok(outcome.issues.length);
+  }
 });
 test("原始文字可逐字整理到空栏目，不能提取时也无需补齐栏目", async () => {
   const n = note(),
@@ -818,18 +908,22 @@ test("同一成员可提交超过旧个人及全组每日上限，旧配置和�
   assert.equal((await f.storage.list({ prefix: "job:" })).size, 51);
   assert.equal((await f.storage.list({ prefix: "usage:" })).size, 0);
 });
-test("共享密钥缺失时旧发布入口不能绕过审核，匿名任务查询受保护", async () => {
-  const cookie = `mcs_session=${await seal(user, env.SESSION_SECRET)}`;
-  const response = await handle(
-    new Request("https://site.test/api/publish", {
-      method: "POST",
-      headers: { Origin: "https://site.test", Cookie: cookie },
-      body: JSON.stringify({ note: note(), assets: [], baseRevision: "" }),
-    }),
-    { ...env, DEEPSEEK_API_KEY: undefined },
+test("共享密钥缺失仍可进入基本校验队列，写权限和匿名查询保护保留", async () => {
+  const f = fixture({}, { ...env, DEEPSEEK_API_KEY: undefined });
+  const n = note();
+  assert.equal((await f.submit(n)).status, 202);
+  await f.queue.alarm();
+  assert.deepEqual(f.counts(), { reviews: 1, commits: 1 });
+  assert.equal(
+    (
+      await f.call(
+        "submit",
+        { value: { note: note(), assets: [], baseRevision: "" } },
+        { ...user, canWrite: false },
+      )
+    ).status,
+    403,
   );
-  assert.equal(response.status, 503);
-  assert.match(await response.text(), /共享 DeepSeek/);
   assert.equal(
     (await handle(new Request("https://site.test/api/reviews"), env)).status,
     401,

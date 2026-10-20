@@ -35,6 +35,7 @@ let head = "head-0",
   modelCalls = 0,
   refWrites = 0,
   approved = true,
+  modelUnavailable = false,
   ambiguousNext = false,
   restarts = 0;
 const result = (body, status = 200) => Response.json(body, { status });
@@ -47,6 +48,7 @@ const outbound = async (request) => {
   }
   if (url.host === "api.deepseek.com" && pathname === "/chat/completions") {
     modelCalls++;
+    if (modelUnavailable) return result({ error: "unavailable" }, 503);
     const body = await request.json();
     assert.ok(!JSON.stringify(body).includes("test-token"));
     return result({
@@ -67,6 +69,11 @@ const outbound = async (request) => {
       ],
     });
   }
+  if (url.host === "api.deepseek.com" && pathname === "/v1/tools/search")
+    return result({ results: [] });
+  if (url.host === "export.arxiv.org") return new Response("<feed/>");
+  if (url.host === "api.crossref.org")
+    return result({ message: { items: [] } });
   assert.equal(url.host, "api.github.com");
   const body = request.method === "GET" ? {} : await request.json();
   if (pathname === "/repos/group/papers")
@@ -337,9 +344,8 @@ try {
     "Bob",
   );
   assert.equal(
-    JSON.parse(files.get(`data/notes/${second.id}.json`)).review.suggestions[0]
-      .field,
-    "insights",
+    JSON.parse(files.get(`data/notes/${second.id}.json`)).review.suggestions,
+    undefined,
   );
   const before = files.size;
   approved = false;
@@ -492,6 +498,52 @@ try {
   } while (Date.now() < deadline);
   assert.equal(modelCalls, 2);
   assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 1);
+  modelUnavailable = true;
+  const fallback = {
+    ...second,
+    id: `note-${crypto.randomUUID()}`,
+    title: "一条初读记录",
+    paperUrl: "",
+    pdfUrl: "",
+    year: "",
+    venue: "",
+    body: "## 初读\n\n读后想进一步了解潜在空间预测。",
+  };
+  const basic = await call("/api/publish", {
+    note: fallback,
+    assets: [],
+    baseRevision: "",
+  });
+  assert.equal(basic.status, 202);
+  await waitJob(basic.body.job.id, "published");
+  const basicSaved = JSON.parse(files.get(`data/notes/${fallback.id}.json`));
+  assert.equal(basicSaved.body, fallback.body);
+  assert.equal(basicSaved.paperUrl, "");
+  assert.equal(basicSaved.pdfUrl, "");
+  assert.equal(basicSaved.review.model, "basic-validation");
+  assert.match(basicSaved.review.enrichmentNotice, /不影响发布/);
+  assert.equal(modelCalls, 3);
+  await mf.dispose();
+  const noKeyBindings = { ...bindings };
+  delete noKeyBindings.DEEPSEEK_API_KEY;
+  mf = new Miniflare(
+    runtimeOptions("workflow-runtime", persist, noKeyBindings, outbound),
+  );
+  restarts++;
+  const noKeyNote = { ...fallback, id: `note-${crypto.randomUUID()}` };
+  const noKey = await call("/api/publish", {
+    note: noKeyNote,
+    assets: [],
+    baseRevision: "",
+  });
+  assert.equal(noKey.status, 202);
+  await waitJob(noKey.body.job.id, "published");
+  assert.equal(
+    JSON.parse(files.get(`data/notes/${noKeyNote.id}.json`)).review.model,
+    "basic-validation",
+  );
+  assert.equal(modelCalls, 3);
+  assert.equal(JSON.parse(files.get("data/library.json")).notes.length, 3);
   const snapshot = path.join(persist, "repository-snapshot");
   for (const [relative, content] of files) {
     const target = path.resolve(snapshot, relative);
@@ -512,7 +564,10 @@ try {
     nickname: true,
     multipleContributors: true,
     rejectionNoWrite: true,
-    optionalSuggestionsDoNotBlockPublishing: true,
+    modelQualityVerdictIgnored: true,
+    supplementOutageDoesNotBlockPublishing: true,
+    missingSourceDoesNotBlockPublishing: true,
+    missingKeyDoesNotBlockPublishing: true,
     authorOnlySubmissionDeletion: true,
     assetsUnchanged: true,
     repositoryIntegrity: true,

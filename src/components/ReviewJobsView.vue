@@ -102,6 +102,9 @@ const fieldLabel = (field: string) =>
           </li>
         </ul>
         <div v-if="job.receipt" class="review-result">
+          <p v-if="job.receipt.enrichmentNotice" class="review-message">
+            {{ job.receipt.enrichmentNotice }}
+          </p>
           <p v-if="job.receipt.formatted" class="review-message">
             已整理基本格式
           </p>
